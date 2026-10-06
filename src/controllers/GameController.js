@@ -1,23 +1,43 @@
-import { PLAYER_LABELS } from '../config.js';
 import { RoomStatus } from '../models/RoomModel.js';
 
 const GAME_OVER_MODAL = 'game-over';
 const LEAVE_MODAL = 'confirm-leave';
 
 /**
- * Drives the game screen: turns board input into actions for the
- * RoomController and renders the authoritative game state it holds.
+ * @typedef {object} GameSession
+ * Implemented by RoomController (online) and AIController (vs AI) so the game
+ * screen does not care who the opponent is.
+ * @property {'online'|'ai'} kind
+ * @property {boolean} isActive
+ * @property {'lobby'|'playing'|'finished'} status
+ * @property {import('../models/GameModel.js').GameModel|null} game
+ * @property {0|1} localIndex
+ * @property {string} opponentName        e.g. "Opponent" or "AI"
+ * @property {boolean} opponentOnline
+ * @property {boolean} opponentThinking   AI is computing its move
+ * @property {string|null} banner
+ * @property {{label:string, value:string}} footer
+ * @property {boolean[]} rematchVotes
+ * @property {boolean} rematchNeedsBoth
+ * @property {string} leaveWarning
+ * @property {(action:object) => boolean} submitAction
+ * @property {() => void} requestRematch
+ * @property {() => void} leave
+ */
+
+/**
+ * Drives the game screen: turns board input into actions for the active
+ * session and renders the game state it holds.
  */
 export class GameController {
-  /** Waiting for the host to confirm our action (prevents double submits). */
+  /** Waiting for our action to be confirmed (prevents double submits). */
   #pending = false;
   /** Last computed hint, restored after a touch wall-preview is cancelled. */
   #hint = '';
 
   /**
    * @param {{
-   *   roomCtrl: import('./RoomController.js').RoomController,
-   *   room: import('../models/RoomModel.js').RoomModel,
+   *   getSession: () => GameSession|null,
    *   settings: import('../models/SettingsModel.js').SettingsModel,
    *   view: import('../views/GameView.js').GameView,
    *   modal: import('../views/ModalView.js').ModalView,
@@ -38,8 +58,9 @@ export class GameController {
     this.view.on('leave', () => this.#confirmLeave());
   }
 
-  get #game() {
-    return this.roomCtrl.game;
+  get #session() {
+    const s = this.getSession();
+    return s?.isActive && s.game ? s : null;
   }
 
   /**
@@ -48,15 +69,16 @@ export class GameController {
    */
   update(event = null) {
     this.#pending = false;
-    if (!this.#game) return;
+    if (!this.#session) return;
     this.#render();
     this.#announce(event);
     this.#syncGameOverModal();
   }
 
-  /** Re-render without an event (e.g. flip-board setting changed). */
+  /** Re-render without an event (e.g. flip-board setting changed, AI started thinking). */
   refresh() {
-    if (this.#game && this.room.status !== RoomStatus.LOBBY) this.#render();
+    const s = this.#session;
+    if (s && s.status !== RoomStatus.LOBBY) this.#render();
   }
 
   closeModals() {
@@ -67,34 +89,25 @@ export class GameController {
   // ------------------------------------------------------------- rendering
 
   #render() {
-    const game = this.#game;
-    const me = this.room.localIndex;
+    const s = this.#session;
+    const game = s.game;
+    const me = s.localIndex;
     const myTurn = !game.isOver && game.turn === me;
-    const opponentOnline = this.room.opponentConnected && !this.roomCtrl.reconnecting;
-    const interactive = myTurn && opponentOnline && !this.#pending;
+    const online = s.opponentOnline;
+    const interactive = myTurn && online && !this.#pending;
 
     let status;
     if (game.isOver) status = { text: game.winner === me ? 'You win!' : 'You lose' };
     else if (myTurn) status = { text: 'Your turn', tone: 'mine' };
-    else status = { text: "Opponent's turn" };
+    else status = { text: `${s.opponentName}'s turn` };
 
     let hint = '';
     if (game.isOver) hint = 'Game over.';
-    else if (!myTurn) hint = `Waiting for ${PLAYER_LABELS[1 - me]} to play…`;
+    else if (!myTurn) hint = s.opponentThinking ? `${s.opponentName} is thinking…` : `Waiting for ${s.opponentName.toLowerCase()} to play…`;
     else if (!game.hasWallsLeft(me)) hint = 'No walls left. Move your pawn to a highlighted square.';
     else if (this.view.isTouch) hint = 'Tap a highlighted square to move, or tap a gap between two dots twice to place a wall.';
     else hint = 'Click a highlighted square to move, or click a gap between two dots to place a wall.';
     this.#hint = hint;
-
-    let banner = null;
-    if (this.roomCtrl.reconnecting) banner = 'Connection to the host lost. Reconnecting…';
-    else if (!this.room.opponentConnected) {
-      banner = this.room.isHost
-        ? `Your opponent disconnected. They can rejoin with code ${this.room.code}.`
-        : 'The host is offline.';
-    }
-
-    const offline = [0, 1].map((i) => i !== me && !opponentOnline);
 
     this.view.render({
       game,
@@ -102,27 +115,30 @@ export class GameController {
       flip: this.settings.flipBoard,
       interactive,
       validateWall: (wall) => game.checkWall(me, wall),
-      roomCode: this.room.code,
+      footer: s.footer,
+      names: [0, 1].map((i) => (i === me ? 'You' : s.opponentName)),
+      thinking: [0, 1].map((i) => i !== me && s.opponentThinking),
       status,
       hint,
-      banner,
-      offline,
+      banner: s.banner,
+      offline: [0, 1].map((i) => i !== me && !online),
     });
   }
 
   #announce(event) {
     if (!event) return;
-    const me = this.room.localIndex;
+    const s = this.#session;
+    const me = s.localIndex;
     switch (event.kind) {
       case 'start':
-        this.toast.show(event.first === me ? 'You go first!' : `${PLAYER_LABELS[event.first]} goes first.`, 'info');
+        this.toast.show(event.first === me ? 'You go first!' : `${s.opponentName} goes first.`, 'info');
         break;
       case 'rejected':
         if (event.by === me) this.toast.show(event.reason, 'error');
         break;
       case 'action':
-        if (event.by !== me && event.action?.kind === 'wall' && !this.#game.isOver) {
-          this.toast.show('Your opponent placed a wall.', 'info', 1800);
+        if (event.by !== me && event.action?.kind === 'wall' && !s.game.isOver) {
+          this.toast.show(`${s.opponentName} placed a wall.`, 'info', 1800);
         }
         break;
       case 'rematch':
@@ -134,21 +150,20 @@ export class GameController {
   }
 
   #syncGameOverModal() {
-    const game = this.#game;
-    if (!game.isOver || this.room.status !== RoomStatus.FINISHED) {
+    const s = this.#session;
+    const game = s.game;
+    if (!game.isOver || s.status !== RoomStatus.FINISHED) {
       this.modal.hide(GAME_OVER_MODAL);
       return;
     }
 
-    const me = this.room.localIndex;
+    const me = s.localIndex;
     const won = game.winner === me;
-    const iVoted = this.room.rematch[me];
-    const theyVoted = this.room.rematch[1 - me];
-    const online = this.room.opponentConnected && !this.roomCtrl.reconnecting;
+    const iVoted = s.rematchNeedsBoth && s.rematchVotes[me];
+    const theyVoted = s.rematchNeedsBoth && s.rematchVotes[1 - me];
+    const online = s.opponentOnline;
 
-    let message = won
-      ? 'You reached the other side first.'
-      : `${PLAYER_LABELS[game.winner]} reached the other side first.`;
+    let message = won ? 'You reached the other side first.' : `${s.opponentName} reached the other side first.`;
     if (!online) message += ' Your opponent is offline.';
     else if (theyVoted && !iVoted) message += ' Your opponent wants a rematch.';
     else if (iVoted) message += ' Waiting for your opponent…';
@@ -158,12 +173,12 @@ export class GameController {
       title: won ? 'You win! 🏆' : 'You lose',
       message,
       actions: [
-        { label: 'Exit', variant: 'ghost', onClick: () => this.roomCtrl.leave() },
+        { label: 'Exit', variant: 'ghost', onClick: () => s.leave() },
         {
           label: iVoted ? 'Waiting…' : 'Play again',
           variant: 'primary',
           disabled: iVoted || !online,
-          onClick: () => this.roomCtrl.requestRematch(),
+          onClick: () => s.requestRematch(),
         },
       ],
     });
@@ -172,27 +187,30 @@ export class GameController {
   // ---------------------------------------------------------------- input
 
   #submit(action) {
-    if (this.#pending) return;
+    const s = this.#session;
+    if (!s || this.#pending) return;
     this.#pending = true;
-    this.#render(); // lock the board until the host confirms
-    if (!this.roomCtrl.submitAction(action)) {
+    this.#render(); // lock the board until the action is confirmed
+    if (!s.submitAction(action)) {
       this.#pending = false;
       this.#render();
     }
   }
 
   #confirmLeave() {
-    if (this.room.status !== RoomStatus.PLAYING) {
-      this.roomCtrl.leave();
+    const s = this.#session;
+    if (!s) return;
+    if (s.status !== RoomStatus.PLAYING) {
+      s.leave();
       return;
     }
     this.modal.show({
       id: LEAVE_MODAL,
       title: 'Leave the match?',
-      message: 'The current game will end for both players.',
+      message: s.leaveWarning,
       actions: [
         { label: 'Stay', variant: 'ghost', onClick: () => this.modal.hide(LEAVE_MODAL) },
-        { label: 'Leave', variant: 'primary', onClick: () => this.roomCtrl.leave() },
+        { label: 'Leave', variant: 'primary', onClick: () => s.leave() },
       ],
     });
   }

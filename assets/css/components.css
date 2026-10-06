@@ -104,7 +104,8 @@
 }
 
 .input--code {
-  flex: 1;
+  flex: 1 1 0;
+  width: 0; /* let flex decide; the input's intrinsic width would overflow on phones */
   font-family: var(--font-mono);
   font-size: 1.4rem;
   letter-spacing: 0.35em;
@@ -181,6 +182,16 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.segmented--block {
+  display: flex;
+  width: 100%;
+}
+
+.segmented--block button {
+  flex: 1;
+  padding-block: 8px;
 }
 
 .segmented button[aria-checked="true"] {

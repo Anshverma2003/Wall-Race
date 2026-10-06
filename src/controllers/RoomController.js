@@ -105,6 +105,37 @@ export class RoomController extends EventEmitter {
     if (session && (!invite || invite === session.code)) this.rejoin();
   }
 
+  // ------------------------------------------------ GameSession interface
+
+  get kind() { return 'online'; }
+  get isActive() { return this.room.isActive; }
+  get status() { return this.room.status; }
+  get localIndex() { return this.room.localIndex; }
+  get opponentName() { return 'Opponent'; }
+  get opponentOnline() { return this.room.opponentConnected && !this.reconnecting; }
+  get opponentThinking() { return false; }
+  get rematchVotes() { return this.room.rematch; }
+  get rematchNeedsBoth() { return true; }
+  get leaveWarning() { return 'The current game will end for both players.'; }
+  get footer() { return { label: 'Room', value: this.room.code ?? '' }; }
+  get canEditMatch() { return this.room.isHost && this.room.status !== RoomStatus.PLAYING; }
+  get matchSettings() { return this.room.settings; }
+
+  get banner() {
+    if (this.reconnecting) return 'Connection to the host lost. Reconnecting…';
+    if (this.room.isActive && !this.room.opponentConnected) {
+      return this.room.isHost
+        ? `Your opponent disconnected. They can rejoin with code ${this.room.code}.`
+        : 'The host is offline.';
+    }
+    return null;
+  }
+
+  /** A room session is stored and would be resumed on load. */
+  get hasStoredSession() {
+    return !!this.#loadSession();
+  }
+
   get inviteLink() {
     const url = new URL(location.href);
     url.search = `?room=${this.room.code}`;
