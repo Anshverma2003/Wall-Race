@@ -1,0 +1,83 @@
+/* =========================================================
+   Design tokens – dark theme is the default.
+   Switching theme only flips the data-theme attribute on <html>.
+   ========================================================= */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #050507;
+  --bg-elevated: #121218;
+  --bg-sunken: #0b0b10;
+  --border: #26262f;
+  --text: #ececf1;
+  --text-muted: #9a9aa8;
+  --overlay: rgba(0, 0, 0, 0.7);
+
+  --accent: #c0182f;
+  --accent-hover: #d9223b;
+  --accent-text: #ffffff;
+
+  --success: #2fbf71;
+  --warning: #e7a93a;
+  --danger: #ef4c5d;
+
+  /* Board */
+  --board-bg: #000000;
+  --board-dot: #8b0a1e;
+  --board-slot-hover: rgba(255, 255, 255, 0.35);
+  --board-slot-invalid: rgba(239, 76, 93, 0.55);
+  --goal-tint-opacity: 0.09;
+
+  /* Players – matching the reference image */
+  --p0: #8b0a1a;
+  --p0-strong: #c0182f;
+  --p1: #4350d6;
+  --p1-strong: #5f6bff;
+  --pawn-text: #ffffff;
+
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f2ee;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #ebe8e2;
+  --border: #dcd8d0;
+  --text: #1b1b22;
+  --text-muted: #636370;
+  --overlay: rgba(20, 20, 30, 0.45);
+
+  --accent: #b3122a;
+  --accent-hover: #9a0f24;
+  --accent-text: #ffffff;
+
+  --success: #1f9a58;
+  --warning: #b97a10;
+  --danger: #c8283a;
+
+  --board-bg: #ffffff;
+  --board-dot: #b4233a;
+  --board-slot-hover: rgba(0, 0, 0, 0.25);
+  --board-slot-invalid: rgba(200, 40, 58, 0.45);
+  --goal-tint-opacity: 0.08;
+
+  --p0: #b3122a;
+  --p0-strong: #d01a35;
+  --p1: #3b47c7;
+  --p1-strong: #4c59e6;
+  --pawn-text: #ffffff;
+
+  --shadow: 0 10px 30px rgba(40, 30, 20, 0.15);
+}
+
+:root {
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}

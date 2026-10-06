@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Wall Race – a two-player online board game. Race to the other side, block your opponent with walls." />
+  <meta name="theme-color" content="#050507" />
+  <title>Wall Race</title>
+
+  <!-- Apply the saved theme before first paint to avoid a flash -->
+  <script>
+    try {
+      var s = JSON.parse(localStorage.getItem('wallrace.settings') || '{}');
+      if (s.theme === 'light') document.documentElement.dataset.theme = 'light';
+    } catch (e) {}
+  </script>
+
+  <link rel="stylesheet" href="assets/css/variables.css" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/screens.css" />
+  <link rel="stylesheet" href="assets/css/board.css" />
+
+  <!-- PeerJS: WebRTC peer-to-peer data channels (the only external dependency) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</head>
+<body>
+  <!-- ============ Top bar ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><rect x="4" y="10.5" width="9" height="3" rx="1.5"/></svg>
+      </span>
+      <span class="brand__name">Wall Race</span>
+    </div>
+    <button class="icon-btn" id="btn-open-settings" type="button" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2.2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/></svg>
+    </button>
+  </header>
+
+  <main class="app">
+    <!-- ============ Home screen ============ -->
+    <section class="screen" id="screen-home" data-screen="home">
+      <div class="home">
+        <h1 class="home__title">Wall Race</h1>
+        <p class="home__tagline">Reach the other side first. Block your rival with walls — but never trap them completely.</p>
+
+        <div class="banner banner--info" id="home-rejoin" hidden>
+          <span>You were in room <strong id="home-rejoin-code"></strong>.</span>
+          <div class="banner__actions">
+            <button class="btn btn--small btn--primary" id="btn-rejoin" type="button">Rejoin</button>
+            <button class="btn btn--small btn--ghost" id="btn-forget-session" type="button">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="card home__card">
+          <button class="btn btn--primary btn--block btn--large" id="btn-create-room" type="button">Create room</button>
+
+          <div class="divider"><span>or join with a code</span></div>
+
+          <form class="join-form" id="form-join" novalidate autocomplete="off">
+            <label class="visually-hidden" for="input-room-code">6-digit room code</label>
+            <input class="input input--code" id="input-room-code" name="code" type="text"
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" />
+            <button class="btn btn--secondary" id="btn-join-room" type="submit">Join</button>
+          </form>
+
+          <p class="form-message" id="home-message" role="status" aria-live="polite"></p>
+        </div>
+
+        <details class="card rules">
+          <summary>How to play</summary>
+          <ul>
+            <li>Each player starts in the middle of their own edge. Who moves first is decided at random.</li>
+            <li>On your turn, either <strong>move</strong> your pawn one square (up, down, left or right) or <strong>place a wall</strong> between two dots.</li>
+            <li>Walls block movement for both players. A wall can never cut a player off completely — there must always be a path to the goal.</li>
+            <li>If the pawns are face to face you may jump over your opponent. If a wall is behind them, step diagonally around instead.</li>
+            <li>The first player to reach the opposite edge wins instantly.</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============ Lobby screen ============ -->
+    <section class="screen" id="screen-lobby" data-screen="lobby" hidden>
+      <div class="lobby">
+        <div class="card lobby__code-card">
+          <p class="lobby__label">Room code</p>
+          <p class="lobby__code" id="lobby-code" aria-live="polite">------</p>
+          <div class="lobby__code-actions">
+            <button class="btn btn--small btn--secondary" id="btn-copy-code" type="button">Copy code</button>
+            <button class="btn btn--small btn--ghost" id="btn-copy-link" type="button">Copy invite link</button>
+          </div>
+          <p class="lobby__hint" id="lobby-hint">Share this code with your opponent.</p>
+        </div>
+
+        <div class="card">
+          <h2 class="card__title">Players</h2>
+          <ul class="player-list" id="lobby-players"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card__title-row">
+            <h2 class="card__title">Match settings</h2>
+            <button class="btn btn--small btn--ghost" id="btn-lobby-settings" type="button" hidden>Edit</button>
+          </div>
+          <dl class="settings-summary">
+            <div><dt>Grid</dt><dd id="lobby-grid">–</dd></div>
+            <div><dt>Walls per player</dt><dd id="lobby-walls">–</dd></div>
+          </dl>
+        </div>
+
+        <div class="lobby__actions">
+          <button class="btn btn--ghost" id="btn-lobby-leave" type="button">Leave room</button>
+          <button class="btn btn--primary btn--large" id="btn-start-game" type="button" hidden disabled>Start game</button>
+          <p class="lobby__waiting" id="lobby-waiting" hidden>Waiting for the host to start…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Game screen ============ -->
+    <section class="screen" id="screen-game" data-screen="game" hidden>
+      <div class="game">
+        <div class="game__hud">
+          <div class="player-chip" id="chip-p0" data-player="0">
+            <span class="player-chip__pawn">P1</span>
+            <span class="player-chip__info">
+              <span class="player-chip__name">Player 1</span>
+              <span class="player-chip__walls">Walls: <b>–</b></span>
+            </span>
+          </div>
+          <div class="game__status" id="game-status" role="status" aria-live="polite"></div>
+          <div class="player-chip player-chip--right" id="chip-p1" data-player="1">
+            <span class="player-chip__info">
+              <span class="player-chip__name">Player 2</span>
+              <span class="player-chip__walls">Walls: <b>–</b></span>
+            </span>
+            <span class="player-chip__pawn">P2</span>
+          </div>
+        </div>
+
+        <div class="banner banner--warning" id="game-banner" hidden></div>
+
+        <div class="board-wrap">
+          <svg class="board" id="board" role="img" aria-label="Game board" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+
+        <div class="game__footer">
+          <p class="game__hint" id="game-hint"></p>
+          <div class="game__footer-actions">
+            <span class="game__room">Room <b id="game-room-code">------</b></span>
+            <button class="btn btn--small btn--ghost" id="btn-game-leave" type="button">Leave</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ Settings dialog ============ -->
+  <div class="overlay" id="settings-overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="dialog__header">
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn" id="btn-close-settings" type="button" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4Z"/></svg>
+        </button>
+      </div>
+
+      <div class="dialog__body">
+        <fieldset class="field-group">
+          <legend>Appearance</legend>
+          <div class="field">
+            <span class="field__label">Theme</span>
+            <div class="segmented" id="setting-theme" role="radiogroup" aria-label="Theme">
+              <button type="button" role="radio" data-value="dark">Dark</button>
+              <button type="button" role="radio" data-value="light">Light</button>
+            </div>
+          </div>
+          <label class="field field--inline">
+            <span class="field__label">Show my pawn at the bottom</span>
+            <input type="checkbox" class="switch" id="setting-flip" />
+          </label>
+        </fieldset>
+
+        <fieldset class="field-group" id="setting-game-group">
+          <legend>Match <span class="tag">Host</span></legend>
+          <div class="field">
+            <span class="field__label">Grid size</span>
+            <div class="segmented" id="setting-grid" role="radiogroup" aria-label="Grid size"></div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="setting-walls">Walls per player</label>
+            <div class="walls-control">
+              <input class="input input--number" id="setting-walls" type="number" inputmode="numeric" min="0" max="50" step="1" />
+              <label class="checkbox">
+                <input type="checkbox" id="setting-walls-unlimited" />
+                <span>Unlimited</span>
+              </label>
+            </div>
+          </div>
+          <p class="field__note" id="setting-game-note"></p>
+        </fieldset>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Generic modal (game over, confirmations) ============ -->
+  <div class="overlay" id="modal-overlay" hidden>
+    <div class="dialog dialog--modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
+      <div class="dialog__body dialog__body--center">
+        <h2 class="modal__title" id="modal-title"></h2>
+        <p class="modal__message" id="modal-message"></p>
+        <div class="modal__actions" id="modal-actions"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Toasts ============ -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <noscript>Wall Race needs JavaScript to run.</noscript>
+</body>
+</html>
