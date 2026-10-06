@@ -1,10 +1,11 @@
 import { EventEmitter } from '../core/EventEmitter.js';
-import { DEFAULT_SETTINGS, GRID_SIZES, STORAGE_KEYS, WALL_LIMIT } from '../config.js';
+import { AI_LEVELS, DEFAULT_SETTINGS, GRID_SIZES, STORAGE_KEYS, WALL_LIMIT } from '../config.js';
 
 /**
  * Local user preferences, persisted to localStorage.
  *  - theme / flipBoard:   personal, apply to any player.
- *  - gridSize / wallLimit: the match settings this user uses when hosting.
+ *  - gridSize / wallLimit: the match settings this user uses when hosting or playing vs AI.
+ *  - aiDifficulty: last chosen AI level.
  *
  * Emits 'change' (changedKeys: string[], settings) whenever something changes.
  */
@@ -25,6 +26,7 @@ export class SettingsModel extends EventEmitter {
     if (typeof raw.flipBoard === 'boolean') out.flipBoard = raw.flipBoard;
     if (GRID_SIZES.includes(Number(raw.gridSize))) out.gridSize = Number(raw.gridSize);
     out.wallLimit = SettingsModel.sanitizeWallLimit(raw.wallLimit);
+    if (Object.hasOwn(AI_LEVELS, raw.aiDifficulty)) out.aiDifficulty = raw.aiDifficulty;
     return out;
   }
 
@@ -39,6 +41,7 @@ export class SettingsModel extends EventEmitter {
   get flipBoard() { return this.#data.flipBoard; }
   get gridSize() { return this.#data.gridSize; }
   get wallLimit() { return this.#data.wallLimit; }
+  get aiDifficulty() { return this.#data.aiDifficulty; }
 
   /** The subset shared with the opponent when hosting. */
   get matchSettings() {

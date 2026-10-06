@@ -3,13 +3,14 @@ import { RoomStatus } from '../models/RoomModel.js';
 /**
  * Connects the settings dialog to the SettingsModel.
  *  - Theme / flip board: always editable, personal to this device.
- *  - Grid size / walls: editable only by the host, and not during a match.
+ *  - Grid size / walls: editable by the host (or the player in a vs-AI game),
+ *    and never during a match.
  */
 export class SettingsController {
   /**
    * @param {{
    *   settings: import('../models/SettingsModel.js').SettingsModel,
-   *   room: import('../models/RoomModel.js').RoomModel,
+   *   getSession: () => import('./GameController.js').GameSession|null,
    *   view: import('../views/SettingsView.js').SettingsView,
    * }} deps
    */
@@ -38,11 +39,11 @@ export class SettingsController {
     this.view.open();
   }
 
-  /** Re-render the dialog if it is open (room state may have changed). */
+  /** Re-render the dialog if it is open (session state may have changed). */
   refresh() {
-    const room = this.room;
+    const session = this.#activeSession;
     const values = this.settings.toJSON();
-    if (room.isActive) Object.assign(values, room.settings); // show what the match actually uses
+    if (session) Object.assign(values, session.matchSettings); // show what the match actually uses
     this.view.render(values, { gameEditable: this.#matchEditable, note: this.#note });
   }
 
@@ -51,18 +52,22 @@ export class SettingsController {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', this.settings.theme === 'dark' ? '#050507' : '#f4f2ee');
   }
 
+  get #activeSession() {
+    const s = this.getSession();
+    return s?.isActive ? s : null;
+  }
+
   get #matchEditable() {
-    const room = this.room;
-    if (!room.isActive) return true;
-    return room.isHost && room.status !== RoomStatus.PLAYING;
+    const s = this.#activeSession;
+    return !s || s.canEditMatch;
   }
 
   get #note() {
-    const room = this.room;
-    if (!room.isActive) return 'Used when you host a room.';
-    if (!room.isHost) return 'Only the host can change match settings.';
-    if (room.status === RoomStatus.PLAYING) return "Match settings can't be changed during a game.";
-    if (room.status === RoomStatus.FINISHED) return 'Changes apply to the next game.';
+    const s = this.#activeSession;
+    if (!s) return 'Used when you host a room or play vs AI.';
+    if (!s.canEditMatch && s.status !== RoomStatus.PLAYING) return 'Only the host can change match settings.';
+    if (s.status === RoomStatus.PLAYING) return "Match settings can't be changed during a game.";
+    if (s.status === RoomStatus.FINISHED) return 'Changes apply to the next game.';
     return 'Changes are shared with your opponent instantly.';
   }
 }

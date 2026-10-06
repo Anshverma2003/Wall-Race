@@ -10,9 +10,28 @@ export const WALL_LIMIT = Object.freeze({ MIN: 0, MAX: 50 });
 export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'dark',          // 'dark' | 'light'
   flipBoard: true,        // show the local player's pawn at the bottom
-  gridSize: 7,            // host only
-  wallLimit: 10,          // host only; null = unlimited
+  gridSize: 7,            // host / vs-AI only
+  wallLimit: 10,          // host / vs-AI only; null = unlimited
+  aiDifficulty: 'medium', // 'easy' | 'medium' | 'hard'
 });
+
+/**
+ * AI opponent strength. See src/ai/AIEngine.js for how each knob is used.
+ *  maxDepth       – how many turns ahead the search looks (backtracking depth)
+ *  timeMs         – thinking budget; iterative deepening stops when it runs out
+ *  wallCandidates – how many wall slots are considered per position
+ *  wallSpread     – also try walls that extend / flank the blocking spot
+ *  noise          – random ± added to root scores (makes weaker levels err)
+ *  wallBias       – score adjustment for walls at the root (negative = reluctant)
+ */
+export const AI_LEVELS = Object.freeze({
+  easy: Object.freeze({ label: 'Easy', maxDepth: 1, timeMs: 250, wallCandidates: 4, wallSpread: false, noise: 2.2, wallBias: -0.9 }),
+  medium: Object.freeze({ label: 'Medium', maxDepth: 2, timeMs: 900, wallCandidates: 14, wallSpread: true, noise: 0.4, wallBias: 0 }),
+  hard: Object.freeze({ label: 'Hard', maxDepth: 4, timeMs: 1800, wallCandidates: 28, wallSpread: true, noise: 0, wallBias: 0 }),
+});
+
+/** Minimum time the AI "thinks" so its moves don't appear instantly. */
+export const AI_MIN_THINK_MS = 450;
 
 export const PLAYER_LABELS = Object.freeze(['P1', 'P2']);
 
@@ -45,4 +64,5 @@ export const STORAGE_KEYS = Object.freeze({
   SETTINGS: 'wallrace.settings',
   PROFILE: 'wallrace.profile',
   SESSION: 'wallrace.session',
+  AI_SESSION: 'wallrace.aiSession',
 });
