@@ -1,0 +1,139 @@
+/* =========================================================
+   Game board (SVG)
+   ========================================================= */
+.board-wrap {
+  width: 100%;
+  max-width: max(280px, min(760px, calc(100dvh - 260px)));
+}
+
+.board {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  background: var(--board-bg);
+  border: 1px solid var(--border);
+  touch-action: manipulation;
+  user-select: none;
+  transition: background-color 0.25s var(--ease);
+}
+
+/* Goal rows – a faint tint of the colour of the player trying to reach them */
+.goal-row {
+  pointer-events: none;
+  opacity: var(--goal-tint-opacity);
+}
+
+.goal-row[data-player="0"] { fill: var(--p0-strong); }
+.goal-row[data-player="1"] { fill: var(--p1-strong); }
+
+.dot {
+  fill: var(--board-dot);
+  pointer-events: none;
+}
+
+/* Placed walls */
+.wall {
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.wall[data-player="0"] { stroke: var(--p0-strong); }
+.wall[data-player="1"] { stroke: var(--p1-strong); }
+
+.wall--latest {
+  animation: wall-drop 0.35s var(--ease);
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.wall--latest[data-player="0"] { color: var(--p0-strong); }
+.wall--latest[data-player="1"] { color: var(--p1-strong); }
+
+@keyframes wall-drop {
+  from { opacity: 0; stroke-width: 2; }
+}
+
+/* Wall slots – invisible hit areas between dots */
+.slot {
+  fill: transparent;
+}
+
+.board[data-interactive="true"] .slot:not([data-disabled="true"]) {
+  cursor: pointer;
+}
+
+/* Wall preview */
+.wall-preview {
+  stroke-linecap: round;
+  pointer-events: none;
+  stroke: var(--board-slot-hover);
+}
+
+.wall-preview[data-valid="false"] {
+  stroke: var(--board-slot-invalid);
+  stroke-dasharray: 6 10;
+}
+
+.wall-preview[data-pending="true"] {
+  animation: pulse 0.9s infinite;
+}
+
+/* Legal-move markers */
+.move-target {
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s, r 0.15s;
+}
+
+.move-target[data-player="0"] { fill: var(--p0-strong); }
+.move-target[data-player="1"] { fill: var(--p1-strong); }
+
+.move-target:hover {
+  opacity: 0.7;
+}
+
+/* Pawns */
+.pawn {
+  pointer-events: none;
+  transition: transform 0.28s var(--ease);
+}
+
+.pawn__body {
+  stroke-width: 4;
+  stroke: transparent;
+  transition: stroke 0.2s;
+}
+
+.pawn[data-player="0"] .pawn__body { fill: var(--p0); }
+.pawn[data-player="1"] .pawn__body { fill: var(--p1); }
+
+.pawn[data-active="true"][data-player="0"] .pawn__body { stroke: var(--p0-strong); }
+.pawn[data-active="true"][data-player="1"] .pawn__body { stroke: var(--p1-strong); }
+
+.pawn__ring {
+  fill: none;
+  stroke-width: 3;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.pawn[data-player="0"] .pawn__ring { stroke: var(--p0-strong); }
+.pawn[data-player="1"] .pawn__ring { stroke: var(--p1-strong); }
+
+.pawn[data-active="true"] .pawn__ring {
+  animation: ring 1.6s ease-out infinite;
+}
+
+@keyframes ring {
+  0% { opacity: 0.8; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.45); }
+}
+
+.pawn__label {
+  fill: var(--pawn-text);
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 26px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
