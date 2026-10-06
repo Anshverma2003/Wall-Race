@@ -69,6 +69,20 @@
           <p class="form-message" id="home-message" role="status" aria-live="polite"></p>
         </div>
 
+        <div class="card home__ai">
+          <div class="card__title-row">
+            <h2 class="card__title">Play vs AI</h2>
+            <span class="home__ai-badge">No internet needed</span>
+          </div>
+          <div class="segmented segmented--block" id="ai-difficulty" role="radiogroup" aria-label="AI difficulty">
+            <button type="button" role="radio" data-value="easy">Easy</button>
+            <button type="button" role="radio" data-value="medium">Medium</button>
+            <button type="button" role="radio" data-value="hard">Hard</button>
+          </div>
+          <p class="home__ai-meta" id="ai-meta"></p>
+          <button class="btn btn--secondary btn--block btn--large" id="btn-play-ai" type="button">Play vs AI</button>
+        </div>
+
         <details class="card rules">
           <summary>How to play</summary>
           <ul>
@@ -77,6 +91,7 @@
             <li>Walls block movement for both players. A wall can never cut a player off completely — there must always be a path to the goal.</li>
             <li>If the pawns are face to face you may jump over your opponent. If a wall is behind them, step diagonally around instead.</li>
             <li>The first player to reach the opposite edge wins instantly.</li>
+            <li>Want to practise? <strong>Play vs AI</strong> runs entirely in your browser. The AI is a game-tree search, not a chatbot.</li>
           </ul>
         </details>
       </div>
@@ -149,7 +164,7 @@
         <div class="game__footer">
           <p class="game__hint" id="game-hint"></p>
           <div class="game__footer-actions">
-            <span class="game__room">Room <b id="game-room-code">------</b></span>
+            <span class="game__room"><span id="game-footer-label">Room</span> <b id="game-footer-value">------</b></span>
             <button class="btn btn--small btn--ghost" id="btn-game-leave" type="button">Leave</button>
           </div>
         </div>

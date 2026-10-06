@@ -2,9 +2,9 @@ import { EventEmitter } from '../core/EventEmitter.js';
 import { ROOM } from '../config.js';
 
 /**
- * Home screen: create a room, join with a code, or rejoin a stored session.
+ * Home screen: create a room, join with a code, rejoin a stored session or play vs AI.
  *
- * Events: 'create', 'join' (code), 'rejoin', 'forget-session'
+ * Events: 'create', 'join' (code), 'rejoin', 'forget-session', 'play-ai', 'ai-difficulty' (level)
  */
 export class HomeView extends EventEmitter {
   constructor() {
@@ -18,8 +18,20 @@ export class HomeView extends EventEmitter {
     this.rejoinCode = document.getElementById('home-rejoin-code');
     this.rejoinBtn = document.getElementById('btn-rejoin');
     this.forgetBtn = document.getElementById('btn-forget-session');
+    this.aiDifficulty = document.getElementById('ai-difficulty');
+    this.aiMeta = document.getElementById('ai-meta');
+    this.playAiBtn = document.getElementById('btn-play-ai');
 
     this.#bind();
+  }
+
+  /** @param {{difficulty:string, gridSize:number, wallLimit:number|null}} state */
+  renderAi({ difficulty, gridSize, wallLimit }) {
+    for (const btn of this.aiDifficulty.querySelectorAll('button[data-value]')) {
+      btn.setAttribute('aria-checked', String(btn.dataset.value === difficulty));
+    }
+    const walls = wallLimit === null ? 'unlimited walls' : `${wallLimit} wall${wallLimit === 1 ? '' : 's'} each`;
+    this.aiMeta.textContent = `${gridSize} × ${gridSize} board · ${walls} · change these in ⚙ Settings`;
   }
 
   #bind() {
@@ -36,6 +48,12 @@ export class HomeView extends EventEmitter {
       this.emit('join', this.codeInput.value.trim());
     });
 
+    this.playAiBtn.addEventListener('click', () => this.emit('play-ai'));
+    this.aiDifficulty.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-value]');
+      if (btn) this.emit('ai-difficulty', btn.dataset.value);
+    });
+
     this.rejoinBtn.addEventListener('click', () => this.emit('rejoin'));
     this.forgetBtn.addEventListener('click', () => this.emit('forget-session'));
   }
@@ -47,6 +65,7 @@ export class HomeView extends EventEmitter {
     this.joinBtn.disabled = disabled;
     this.codeInput.disabled = disabled;
     this.rejoinBtn.disabled = disabled;
+    this.playAiBtn.disabled = disabled;
     this.createBtn.textContent = busy === 'create' ? 'Creating room…' : 'Create room';
     this.joinBtn.textContent = busy === 'join' ? 'Joining…' : 'Join';
     this.rejoinBtn.textContent = busy === 'rejoin' ? 'Rejoining…' : 'Rejoin';
