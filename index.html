@@ -34,9 +34,14 @@
       </span>
       <span class="brand__name">Wall Race</span>
     </div>
-    <button class="icon-btn" id="btn-open-settings" type="button" aria-label="Settings" title="Settings">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2.2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/></svg>
-    </button>
+    <div class="topbar__actions">
+      <button class="player-badge" id="btn-player-badge" type="button" title="Your profile" hidden>
+        <span class="player-badge__name" id="player-badge-name"></span><span class="player-badge__tag" id="player-badge-tag"></span>
+      </button>
+      <button class="icon-btn" id="btn-open-settings" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2.2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/></svg>
+      </button>
+    </div>
   </header>
 
   <main class="app">
@@ -81,7 +86,19 @@
           </div>
           <p class="home__ai-meta" id="ai-meta"></p>
           <button class="btn btn--secondary btn--block btn--large" id="btn-play-ai" type="button">Play vs AI</button>
+          <p class="home__ai-note">Wins against <strong>Hard</strong> count on the leaderboard.</p>
         </div>
+
+        <button class="card home__leaderboard" id="btn-open-leaderboard" type="button">
+          <span class="home__leaderboard-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 3h10v2h4v3a5 5 0 0 1-4.6 5A5 5 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A5 5 0 0 1 7.6 13 5 5 0 0 1 3 8V5h4V3Zm0 4H5v1a3 3 0 0 0 2 2.8V7Zm10 0v3.8A3 3 0 0 0 19 8V7h-2Z"/></svg>
+          </span>
+          <span class="home__leaderboard-text">
+            <strong>Leaderboard</strong>
+            <span>Top players online and vs Hard AI</span>
+          </span>
+          <svg class="home__leaderboard-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 6.4 10 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+        </button>
 
         <details class="card rules">
           <summary>How to play</summary>
@@ -94,6 +111,44 @@
             <li>Want to practise? <strong>Play vs AI</strong> runs entirely in your browser. The AI is a game-tree search, not a chatbot.</li>
           </ul>
         </details>
+      </div>
+    </section>
+
+    <!-- ============ Leaderboard screen ============ -->
+    <section class="screen" id="screen-leaderboard" data-screen="leaderboard" hidden>
+      <div class="leaderboard">
+        <div class="leaderboard__head">
+          <button class="icon-btn" id="btn-leaderboard-back" type="button" aria-label="Back" title="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 6.4 14 5l-7 7 7 7 1.4-1.4L9.8 12z"/></svg>
+          </button>
+          <h1 class="leaderboard__title">Leaderboard</h1>
+          <button class="icon-btn" id="btn-leaderboard-refresh" type="button" aria-label="Refresh" title="Refresh">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.3L13 11h7V4l-2.3 2.3Z"/></svg>
+          </button>
+        </div>
+
+        <div class="segmented segmented--block" id="leaderboard-board" role="tablist" aria-label="Leaderboard">
+          <button type="button" role="tab" data-value="online">Online</button>
+          <button type="button" role="tab" data-value="ai">vs Hard AI</button>
+        </div>
+
+        <div class="leaderboard__periods" id="leaderboard-periods" role="radiogroup" aria-label="Period" hidden>
+          <button type="button" role="radio" data-value="week">Last 7 days</button>
+          <button type="button" role="radio" data-value="month">Last 30 days</button>
+          <button type="button" role="radio" data-value="all">All time</button>
+        </div>
+
+        <p class="leaderboard__caption" id="leaderboard-caption"></p>
+
+        <div class="card leaderboard__card">
+          <div class="leaderboard__table-wrap">
+            <table class="leaderboard__table" id="leaderboard-table">
+              <thead id="leaderboard-thead"></thead>
+              <tbody id="leaderboard-tbody"></tbody>
+            </table>
+          </div>
+          <p class="leaderboard__state" id="leaderboard-state" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </section>
 
@@ -200,6 +255,35 @@
       </div>
 
       <div class="dialog__body">
+        <fieldset class="field-group" id="setting-profile-group">
+          <legend>Profile</legend>
+          <form class="field" id="form-profile-name" novalidate autocomplete="off">
+            <label class="field__label" for="profile-name">Name</label>
+            <div class="inline-edit">
+              <input class="input" id="profile-name" type="text" maxlength="16" spellcheck="false" />
+              <button class="btn btn--small btn--secondary" type="submit">Save</button>
+            </div>
+          </form>
+          <form class="field" id="form-profile-tag" novalidate autocomplete="off">
+            <label class="field__label" for="profile-tag">Tag</label>
+            <div class="inline-edit">
+              <span class="tag-input"><span aria-hidden="true">#</span><input class="input input--tag" id="profile-tag" type="text" inputmode="numeric" maxlength="4" /></span>
+              <button class="btn btn--small btn--secondary" type="submit">Save</button>
+            </div>
+          </form>
+          <p class="field__note" id="profile-note"></p>
+          <div class="field">
+            <span class="field__label">Recovery code</span>
+            <div class="inline-edit">
+              <code class="recovery-code" id="profile-code">••••-••••-••••-••••</code>
+              <button class="btn btn--small btn--ghost" id="btn-profile-code-toggle" type="button">Show</button>
+              <button class="btn btn--small btn--ghost" id="btn-profile-code-copy" type="button">Copy</button>
+            </div>
+            <p class="field__note">Use it to restore your profile on another device. Keep it secret.</p>
+          </div>
+          <button class="btn btn--small btn--ghost" id="btn-profile-switch" type="button">Use a different recovery code</button>
+        </fieldset>
+
         <fieldset class="field-group">
           <legend>Appearance</legend>
           <div class="field">
@@ -233,6 +317,58 @@
           </div>
           <p class="field__note" id="setting-game-note"></p>
         </fieldset>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Player profile (first open / recovery) ============ -->
+  <div class="overlay overlay--solid" id="player-overlay" hidden>
+    <div class="dialog dialog--player" role="dialog" aria-modal="true" aria-labelledby="player-title">
+      <div class="dialog__body">
+        <!-- Create a profile -->
+        <form class="player-panel" id="form-player-create" data-panel="create" novalidate autocomplete="off">
+          <h2 class="player-panel__title" id="player-title">Choose your player name</h2>
+          <p class="player-panel__lead">This is how you'll appear to opponents and on the leaderboard.</p>
+
+          <div class="name-tag">
+            <div class="field name-tag__name">
+              <label class="field__label" for="player-name">Name</label>
+              <input class="input" id="player-name" type="text" maxlength="16" spellcheck="false" placeholder="baba yaga" />
+            </div>
+            <div class="field name-tag__tag">
+              <label class="field__label" for="player-tag">Tag</label>
+              <span class="tag-input"><span aria-hidden="true">#</span><input class="input input--tag" id="player-tag" type="text" inputmode="numeric" maxlength="4" placeholder="2003" /></span>
+            </div>
+          </div>
+          <p class="field__note">Name: 3–16 letters, numbers, spaces, _ or -. Tag: 4 digits that nobody else has. You can change your name any time, and your tag once a month.</p>
+          <p class="form-message" id="player-create-message" role="status" aria-live="polite"></p>
+
+          <button class="btn btn--primary btn--block btn--large" id="btn-player-create" type="submit">Continue</button>
+          <button class="btn btn--ghost btn--block" type="button" data-goto="recover">I have a recovery code</button>
+        </form>
+
+        <!-- Restore with a recovery code -->
+        <form class="player-panel" id="form-player-recover" data-panel="recover" novalidate autocomplete="off" hidden>
+          <h2 class="player-panel__title">Restore your profile</h2>
+          <p class="player-panel__lead">Enter the recovery code you saved when you created your profile.</p>
+          <div class="field">
+            <label class="field__label" for="player-recovery">Recovery code</label>
+            <input class="input input--recovery" id="player-recovery" type="text" spellcheck="false" autocapitalize="characters" placeholder="WR-XXXX-XXXX-XXXX-XXXX" />
+          </div>
+          <p class="form-message" id="player-recover-message" role="status" aria-live="polite"></p>
+          <button class="btn btn--primary btn--block btn--large" id="btn-player-recover" type="submit">Restore profile</button>
+          <button class="btn btn--ghost btn--block" type="button" data-goto="back">Back</button>
+        </form>
+
+        <!-- Show the new recovery code once -->
+        <div class="player-panel" data-panel="saved" hidden>
+          <h2 class="player-panel__title">Welcome, <span id="player-welcome"></span>!</h2>
+          <p class="player-panel__lead">Save this recovery code somewhere safe. It's the only way to get your profile back on another device or after clearing your browser.</p>
+          <code class="recovery-code recovery-code--big" id="player-new-code"></code>
+          <button class="btn btn--secondary btn--block" id="btn-player-copy-code" type="button">Copy code</button>
+          <button class="btn btn--primary btn--block btn--large" id="btn-player-done" type="button">I've saved it</button>
+          <p class="field__note">You can see it again later in Settings.</p>
+        </div>
       </div>
     </div>
   </div>

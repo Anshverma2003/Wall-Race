@@ -9,7 +9,19 @@ export const RoomStatus = Object.freeze({
   FINISHED: 'finished',
 });
 
-const emptySeat = () => ({ playerId: null, connected: false });
+const emptySeat = () => ({ playerId: null, connected: false, card: null });
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A player's public identity as received from a peer, or null if malformed. */
+export function sanitizeCard(card) {
+  if (!card || typeof card !== 'object') return null;
+  const { id, name, tag } = card;
+  if (typeof id !== 'string' || !UUID.test(id)) return null;
+  if (typeof name !== 'string' || name.length < 1 || name.length > 16) return null;
+  if (typeof tag !== 'string' || !/^[0-9]{4}$/.test(tag)) return null;
+  return { id, name, tag };
+}
 
 /**
  * State of the current room. The host owns the source of truth and sends
@@ -30,6 +42,8 @@ export class RoomModel {
     this.settings = { gridSize: GRID_SIZES[0], wallLimit: 10 };
     this.seats = [emptySeat(), emptySeat()];
     this.rematch = [false, false];
+    /** Id of the current / last game, used to report its result to the leaderboard. */
+    this.matchId = null;
   }
 
   get isActive() {
@@ -53,12 +67,12 @@ export class RoomModel {
   }
 
   /** Host-side initialisation. */
-  openAsHost(code, playerId, matchSettings) {
+  openAsHost(code, playerId, matchSettings, card = null) {
     this.reset();
     this.code = code;
     this.role = Role.HOST;
     this.localIndex = 0;
-    this.seats[0] = { playerId, connected: true };
+    this.seats[0] = { playerId, connected: true, card };
     this.setSettings(matchSettings);
   }
 
@@ -87,8 +101,9 @@ export class RoomModel {
       code: this.code,
       status: this.status,
       settings: { ...this.settings },
-      seats: this.seats.map((s) => ({ connected: s.connected })),
+      seats: this.seats.map((s) => ({ connected: s.connected, card: s.card })),
       rematch: [...this.rematch],
+      matchId: this.matchId,
     };
   }
 
@@ -96,8 +111,13 @@ export class RoomModel {
     this.code = snap.code;
     this.status = snap.status;
     this.setSettings(snap.settings);
-    this.seats = snap.seats.map((s, i) => ({ playerId: this.seats[i]?.playerId ?? null, connected: !!s.connected }));
+    this.seats = snap.seats.map((s, i) => ({
+      playerId: this.seats[i]?.playerId ?? null,
+      connected: !!s.connected,
+      card: sanitizeCard(s.card),
+    }));
     this.rematch = [...snap.rematch];
+    this.matchId = typeof snap.matchId === 'string' ? snap.matchId : null;
   }
 
   /** Full host state for localStorage, so a refresh can restore the room. */
@@ -110,6 +130,7 @@ export class RoomModel {
       settings: { ...this.settings },
       seats: this.seats.map((s) => ({ ...s })),
       rematch: [...this.rematch],
+      matchId: this.matchId,
     };
   }
 
@@ -120,8 +141,9 @@ export class RoomModel {
       role: data.role,
       localIndex: data.localIndex,
       status: data.status,
-      seats: data.seats.map((s) => ({ ...s })),
+      seats: data.seats.map((s) => ({ ...emptySeat(), ...s })),
       rematch: [...data.rematch],
+      matchId: data.matchId ?? null,
     });
     this.setSettings(data.settings);
   }
