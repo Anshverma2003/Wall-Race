@@ -2,7 +2,7 @@ import { EventEmitter } from '../core/EventEmitter.js';
 import { AI_LEVELS, AI_MIN_THINK_MS, ROOM, STORAGE_KEYS } from '../config.js';
 import { GameModel } from '../models/GameModel.js';
 import { RoomStatus } from '../models/RoomModel.js';
-import { randomInt } from '../utils/random.js';
+import { generateUuid, randomInt, randomUint32 } from '../utils/random.js';
 
 const HUMAN = 0; // P1 (red) – same seat as a host, so "flip board" behaves the same
 const AI = 1;    // P2 (blue)
@@ -19,6 +19,10 @@ export class AIController extends EventEmitter {
   game = null;
   status = RoomStatus.LOBBY;
   difficulty = 'medium';
+  /** Seeds the AI's randomness so the server can replay this exact game. */
+  seed = 0;
+  /** Unique id of this game, used when reporting a win. */
+  gameId = null;
 
   #active = false;
   #thinking = false;
@@ -33,6 +37,8 @@ export class AIController extends EventEmitter {
    *   storage: import('../services/StorageService.js').StorageService,
    *   aiService: import('../services/AIService.js').AIService,
    *   homeView: import('../views/HomeView.js').HomeView,
+   *   results: import('../services/ResultsService.js').ResultsService,
+   *   toast: import('../views/ToastView.js').ToastView,
    * }} deps
    */
   constructor(deps) {
@@ -77,6 +83,8 @@ export class AIController extends EventEmitter {
     const { gridSize, wallLimit } = this.settings.matchSettings;
     const first = randomInt(2);
     this.difficulty = this.settings.aiDifficulty;
+    this.seed = randomUint32();
+    this.gameId = generateUuid();
     this.game = new GameModel({ size: gridSize, wallLimit, startingPlayer: first });
     this.status = RoomStatus.PLAYING;
     this.#active = true;
@@ -115,7 +123,10 @@ export class AIController extends EventEmitter {
   // -------------------------------------------------------------- internals
 
   #afterAction(event) {
-    if (this.game.isOver) this.status = RoomStatus.FINISHED;
+    if (this.game.isOver) {
+      this.status = RoomStatus.FINISHED;
+      if (event?.kind === 'action') this.#reportWin();
+    }
     this.#save();
     this.emit('change');
     this.#gameController?.update(event);
@@ -153,11 +164,20 @@ export class AIController extends EventEmitter {
   async #requestMove() {
     const json = this.game.toJSON();
     try {
-      return await this.aiService.chooseAction(json, AI, this.difficulty);
+      return await this.aiService.chooseAction(json, AI, this.difficulty, this.seed);
     } catch (err) {
       // Worker could not start (old browser / blocked) → service now runs inline.
-      if (err?.message === 'worker-failed') return this.aiService.chooseAction(json, AI, this.difficulty);
+      if (err?.message === 'worker-failed') return this.aiService.chooseAction(json, AI, this.difficulty, this.seed);
       throw err;
+    }
+  }
+
+  /** Wins against the Hard AI go to the leaderboard (verified on the server). */
+  async #reportWin() {
+    if (this.game.winner !== HUMAN || this.difficulty !== 'hard') return;
+    const result = await this.results.reportAiWin({ gameId: this.gameId, seed: this.seed, game: this.game.toJSON() });
+    if (result?.status === 'recorded') {
+      this.toast.show(`Win recorded on the leaderboard! Hard wins: ${result.hard_wins}.`, 'success', 4000);
     }
   }
 
@@ -178,6 +198,8 @@ export class AIController extends EventEmitter {
     if (!this.#active) return;
     this.storage.set(STORAGE_KEYS.AI_SESSION, {
       difficulty: this.difficulty,
+      seed: this.seed,
+      gameId: this.gameId,
       status: this.status,
       game: this.game.toJSON(),
       savedAt: Date.now(),
@@ -198,6 +220,8 @@ export class AIController extends EventEmitter {
       return;
     }
     this.difficulty = data.difficulty;
+    this.seed = Number.isInteger(data.seed) ? data.seed : randomUint32();
+    this.gameId = data.gameId ?? generateUuid();
     this.status = this.game.isOver ? RoomStatus.FINISHED : RoomStatus.PLAYING;
     this.#active = true;
     this.app.showScreen('game');

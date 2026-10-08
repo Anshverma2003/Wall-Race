@@ -1,0 +1,9 @@
+{
+  "name": "wall-race",
+  "private": true,
+  "type": "module",
+  "description": "Static site + one Vercel function (api/report.js). No build step and no dependencies.",
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -51,7 +51,15 @@ export class LobbyView extends EventEmitter {
 
         const name = document.createElement('span');
         name.className = 'player-row__name';
-        name.textContent = `Player ${i + 1}${i === 0 ? ' · Host' : ''}${i === localIndex ? ' (You)' : ''}`;
+        const who = seat.card ? `${seat.card.name}#${seat.card.tag}` : `Player ${i + 1}`;
+        name.textContent = `${who}${i === 0 ? ' · Host' : ''}${i === localIndex ? ' (You)' : ''}`;
+        if (seat.card?.rating) {
+          const rating = document.createElement('span');
+          rating.className = 'player-row__rating';
+          rating.textContent = String(seat.card.rating);
+          rating.title = 'Rating';
+          name.appendChild(rating);
+        }
 
         const status = document.createElement('span');
         status.className = 'player-row__status';
