@@ -612,9 +612,59 @@
   color: var(--danger);
 }
 
+.lb-id {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Extra stats under the name – only on narrow screens, where their columns are hidden. */
+.lb-sub {
+  display: none;
+}
+
+.lb-grid::before {
+  content: " · ";
+}
+
+.th-short {
+  display: none;
+}
+
 @media (max-width: 520px) {
   .leaderboard__table .col-opt {
     display: none;
+  }
+
+  .lb-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: normal;
+  }
+
+  .leaderboard__table td {
+    vertical-align: top;
+  }
+
+  .lb-grid {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .lb-grid::before {
+    content: none;
+  }
+
+  .leaderboard__table th:has(.th-short) .th-full {
+    display: none;
+  }
+
+  .th-short {
+    display: inline;
   }
 
   .leaderboard__table th,
