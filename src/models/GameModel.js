@@ -54,6 +54,12 @@ export class GameModel {
     this.moveCount = 0;
     /** @type {null | {by:0|1, kind:'move'|'wall', r:number, c:number, o?:'h'|'v', jumped?:boolean}} */
     this.lastAction = null;
+    /**
+     * Every action played, in order. Replaying it from the starting position
+     * rebuilds any earlier position (used by the < > history buttons).
+     * @type {{by:0|1, kind:'move'|'wall', r:number, c:number, o?:'h'|'v'}[]}
+     */
+    this.history = [];
 
     this._wallSet = new Set();
   }
@@ -73,6 +79,7 @@ export class GameModel {
       winner: this.winner,
       moveCount: this.moveCount,
       lastAction: this.lastAction ? { ...this.lastAction } : null,
+      history: this.history.map((a) => ({ ...a })),
     };
   }
 
@@ -86,7 +93,23 @@ export class GameModel {
     game.winner = data.winner;
     game.moveCount = data.moveCount;
     game.lastAction = data.lastAction ? { ...data.lastAction } : null;
+    game.history = (data.history ?? []).map((a) => ({ ...a }));
     game._wallSet = new Set(game.walls.map((w) => wallKey(w.o, w.r, w.c)));
+    return game;
+  }
+
+  /**
+   * The position after the first `ply` actions of this game (0 = start).
+   * Built by replaying the history on a fresh board.
+   * @returns {GameModel}
+   */
+  positionAt(ply) {
+    const game = new GameModel({ size: this.size, wallLimit: this.wallLimit, startingPlayer: this.startingPlayer });
+    const end = Math.min(Math.max(ply, 0), this.history.length);
+    for (let i = 0; i < end; i++) {
+      const { by, ...action } = this.history[i];
+      game.applyAction(by, action);
+    }
     return game;
   }
 
@@ -236,6 +259,7 @@ export class GameModel {
 
       this.pawns[player] = { r: move.r, c: move.c };
       this.lastAction = { by: player, kind: 'move', r: move.r, c: move.c, jumped: move.jumped };
+      this.history.push({ by: player, kind: 'move', r: move.r, c: move.c });
 
       if (move.r === this.goalRow(player)) {
         this.status = GameStatus.FINISHED;
@@ -250,6 +274,7 @@ export class GameModel {
       this._wallSet.add(wallKey(wall.o, wall.r, wall.c));
       if (this.wallsLeft[player] !== null) this.wallsLeft[player] -= 1;
       this.lastAction = { by: player, kind: 'wall', ...wall };
+      this.history.push({ by: player, kind: 'wall', ...wall });
     } else {
       return { ok: false, reason: 'Unknown action.' };
     }
