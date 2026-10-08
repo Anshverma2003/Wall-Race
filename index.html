@@ -161,9 +161,26 @@
           <svg class="board" id="board" role="img" aria-label="Game board" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
+        <!-- Move history: step through earlier positions (read-only) -->
+        <div class="history-nav" id="history-nav" role="group" aria-label="Move history">
+          <button class="history-nav__btn" type="button" data-nav="first" aria-label="First position" title="First position">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM18.4 6.4 17 5l-7 7 7 7 1.4-1.4L12.8 12z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="prev" aria-label="Previous move" title="Previous move">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 6.4 14 5l-7 7 7 7 1.4-1.4L9.8 12z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="next" aria-label="Next move" title="Next move">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 6.4 10 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="last" aria-label="Back to the current position" title="Back to the current position">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM5.6 6.4 7 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+          </button>
+        </div>
+
         <div class="game__footer">
           <p class="game__hint" id="game-hint"></p>
           <div class="game__footer-actions">
+            <button class="btn btn--small btn--premove" id="btn-clear-premoves" type="button" hidden>Clear premoves</button>
             <span class="game__room"><span id="game-footer-label">Room</span> <b id="game-footer-value">------</b></span>
             <button class="btn btn--small btn--ghost" id="btn-game-leave" type="button">Leave</button>
           </div>

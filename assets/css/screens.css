@@ -309,6 +309,51 @@
   max-width: 760px;
 }
 
+/* Move-history buttons: |<  <  >  >| */
+.history-nav {
+  width: 100%;
+  max-width: max(280px, min(760px, calc(100dvh - 260px)));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.history-nav__btn {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.history-nav__btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.history-nav__btn:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  border-color: var(--text-muted);
+}
+
+.history-nav__btn:disabled {
+  opacity: 0.35;
+}
+
+.btn--premove {
+  background: transparent;
+  border-color: hsl(38 95% 50%);
+  color: hsl(38 95% 50%);
+}
+
+.btn--premove:hover {
+  background: hsl(38 95% 50% / 0.12);
+}
+
 .game__footer {
   width: 100%;
   max-width: 760px;

@@ -13,12 +13,31 @@ const WALL_W = 12;
 const SLOT_THICKNESS = 34;
 const SLOT_INSET = DOT_R + 2;
 
+/** Premove highlight hue – amber contrasts with the black board, red P1 and blue P2. */
+const PREMOVE_HUE = 38;
+
+/**
+ * Colour of the i-th of n premoves: one hue, from dark (first) to light (last),
+ * so the order in which they will be played is visible.
+ */
+export function premoveShade(i, n) {
+  const t = n <= 1 ? 0 : i / (n - 1);
+  const lightness = 38 + t * 30; // 38% → 68%
+  return `hsl(${PREMOVE_HUE} 95% ${lightness}%)`;
+}
+
 /**
  * Renders the board as SVG and turns pointer input into intents.
  *
+ * Modes:
+ *  'play'    – your turn: legal squares are highlighted, walls can be placed
+ *  'premove' – opponent's turn: any square or wall gap can be queued as a premove
+ *  'view'    – read-only (history browsing, game over, waiting)
+ *
  * Events:
- *  'move'    ({r, c})          – player clicked a highlighted square
- *  'wall'    ({o, r, c})       – player confirmed a wall placement
+ *  'move'    ({r, c})          – play mode: player clicked a highlighted square
+ *  'cell'    ({r, c})          – premove mode: player clicked any square
+ *  'wall'    ({o, r, c})       – player confirmed a wall placement (play or premove)
  *  'invalid' (reason: string)  – player tried an illegal wall
  *
  * Mouse: hover a gap between two dots to preview a wall, click to place it.
@@ -31,7 +50,8 @@ export class BoardView extends EventEmitter {
   #layoutKey = '';
   #size = 0;
   #flip = false;
-  #interactive = false;
+  /** @type {'play'|'premove'|'view'} */
+  #mode = 'view';
   #validateWall = () => ({ ok: false });
   #lastPointerType = 'mouse';
   #pendingSlot = null;
@@ -48,11 +68,13 @@ export class BoardView extends EventEmitter {
    *   game: import('../models/GameModel.js').GameModel,
    *   localIndex: 0|1,
    *   flip: boolean,
-   *   interactive: boolean,
-   *   validateWall: (wall:{o:string,r:number,c:number}) => {ok:boolean, reason?:string}
+   *   mode: 'play'|'premove'|'view',
+   *   validateWall: (wall:{o:string,r:number,c:number}) => {ok:boolean, reason?:string},
+   *   premoves?: object[],                       queued premoves to highlight
+   *   pawnOverride?: {player:0|1, r:number, c:number} | null   draw this pawn here instead
    * }} params
    */
-  render({ game, localIndex, flip, interactive, validateWall }) {
+  render({ game, localIndex, flip, mode, validateWall, premoves = [], pawnOverride = null }) {
     const shouldFlip = flip && localIndex === 0; // P1 starts at the top; flip so they see themselves at the bottom
     const key = `${game.size}:${shouldFlip}`;
     if (key !== this.#layoutKey) {
@@ -62,15 +84,17 @@ export class BoardView extends EventEmitter {
       this.#build();
     }
 
-    this.#interactive = interactive;
+    this.#mode = mode;
     this.#validateWall = validateWall;
-    this.#svg.dataset.interactive = String(interactive);
+    this.#svg.dataset.interactive = String(mode !== 'view');
+    this.#svg.dataset.mode = mode;
     this.#clearPreview();
 
     this.#renderWalls(game);
-    this.#renderMoves(game, localIndex, interactive);
-    this.#renderSlots(game, localIndex, interactive);
-    this.#renderPawns(game);
+    this.#renderPremoves(premoves);
+    this.#renderMoves(game, localIndex, mode === 'play');
+    this.#renderSlots(game, localIndex, mode);
+    this.#renderPawns(game, pawnOverride);
   }
 
   /** True when the last pointer interaction was a touch (used for hints). */
@@ -130,6 +154,8 @@ export class BoardView extends EventEmitter {
       goals.appendChild(el('rect', { class: 'goal-row', 'data-player': player, x: PAD, y: top, width: n * CELL, height: CELL }));
     }
 
+    layer('premove-cells');
+
     const dots = layer('dots');
     for (let gy = 0; gy <= n; gy++) {
       for (let gx = 0; gx <= n; gx++) {
@@ -138,7 +164,20 @@ export class BoardView extends EventEmitter {
     }
 
     layer('walls');
+    layer('premove-walls');
     layer('moves');
+
+    // Whole-square hit areas, only clickable in premove mode (any square is accepted).
+    const cells = layer('cells');
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const { x, y } = this.#cellCenter(r, c);
+        cells.appendChild(el('rect', {
+          class: 'cell-hit', 'data-cell': '', 'data-r': r, 'data-c': c,
+          x: x - CELL / 2, y: y - CELL / 2, width: CELL, height: CELL,
+        }));
+      }
+    }
 
     const slots = layer('slots');
     for (let r = 1; r < n; r++) {
@@ -218,17 +257,48 @@ export class BoardView extends EventEmitter {
     this.#layers.moves.replaceChildren(frag);
   }
 
-  #renderSlots(game, localIndex, interactive) {
-    const canWall = interactive && game.hasWallsLeft(localIndex);
+  #renderSlots(game, localIndex, mode) {
+    const canWall = mode === 'play' && game.hasWallsLeft(localIndex);
     for (const slot of this.#layers.slots.children) {
       const { o, r, c } = slotData(slot);
-      slot.dataset.disabled = String(!canWall || game.hasWall(o, r, c));
+      // Premove mode accepts any gap; legality is checked when the premove is played.
+      const enabled = mode === 'premove' || (canWall && !game.hasWall(o, r, c));
+      slot.dataset.disabled = String(!enabled);
     }
   }
 
-  #renderPawns(game) {
-    game.pawns.forEach((pos, p) => {
+  /** Premoves: highlighted squares and walls in shades of one colour, dark (first) → light (last). */
+  #renderPremoves(premoves) {
+    const cells = document.createDocumentFragment();
+    const walls = document.createDocumentFragment();
+    const inset = 6;
+    premoves.forEach((p, i) => {
+      const color = premoveShade(i, premoves.length);
+      if (p.kind === 'move') {
+        const { x, y } = this.#cellCenter(p.r, p.c);
+        cells.appendChild(el('rect', {
+          class: 'premove-cell',
+          x: x - CELL / 2 + inset, y: y - CELL / 2 + inset,
+          width: CELL - inset * 2, height: CELL - inset * 2, rx: 10,
+          fill: color,
+        }));
+      } else {
+        walls.appendChild(el('line', {
+          class: 'premove-wall',
+          ...this.#wallLineInset(p, 3),
+          stroke: color,
+          'stroke-width': WALL_W,
+        }));
+      }
+    });
+    this.#layers['premove-cells'].replaceChildren(cells);
+    this.#layers['premove-walls'].replaceChildren(walls);
+  }
+
+  #renderPawns(game, pawnOverride) {
+    game.pawns.forEach((actual, p) => {
       const g = this.#pawns[p];
+      const pos = pawnOverride && pawnOverride.player === p ? pawnOverride : actual;
       const { x, y } = this.#cellCenter(pos.r, pos.c);
       g.style.transform = `translate(${x}px, ${y}px)`;
       g.dataset.active = String(!game.isOver && game.turn === p);
@@ -260,10 +330,10 @@ export class BoardView extends EventEmitter {
     });
 
     svg.addEventListener('click', (e) => {
-      if (!this.#interactive) return;
+      if (this.#mode === 'view') return;
 
       const move = e.target.closest('[data-move]');
-      if (move) {
+      if (move && this.#mode === 'play') {
         this.#clearPreview();
         this.emit('move', { r: Number(move.dataset.r), c: Number(move.dataset.c) });
         return;
@@ -272,6 +342,10 @@ export class BoardView extends EventEmitter {
       const slot = e.target.closest('.slot');
       if (!slot || !this.#isSlotUsable(slot)) {
         this.#clearPreview();
+        const cell = e.target.closest('[data-cell]');
+        if (cell && this.#mode === 'premove') {
+          this.emit('cell', { r: Number(cell.dataset.r), c: Number(cell.dataset.c) });
+        }
         return;
       }
 
@@ -299,14 +373,14 @@ export class BoardView extends EventEmitter {
   }
 
   #isSlotUsable(slot) {
-    return this.#interactive && slot.dataset.disabled !== 'true';
+    return this.#mode !== 'view' && slot.dataset.disabled !== 'true';
   }
 
   #showPreview(wall, pending) {
     const check = this.#validateWall(wall);
     const l = this.#wallLineInset(wall, 3);
     const line = el('line', {
-      class: 'wall-preview',
+      class: `wall-preview${this.#mode === 'premove' ? ' wall-preview--premove' : ''}`,
       'data-valid': String(check.ok),
       'data-pending': String(pending),
       ...l,

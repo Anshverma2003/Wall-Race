@@ -31,6 +31,15 @@ An internet connection is required. Players connect peer-to-peer over WebRTC usi
    - **Place a wall:** one segment between two adjacent dots. On a mouse, hover to preview and click to place. On touch, tap once to preview and tap again to confirm.
 5. The first player to reach the opposite edge **wins instantly**. Both players can then choose **Play again** (a rematch starts when both agree) or **Exit**.
 
+### Move history (`|<` `<` `>` `>|`)
+The buttons under the board step through every position of the current game: `|<` goes to the start, `<` and `>` move one move back or forward, and `>|` returns to the live position. Past positions are read-only. When your opponent or the AI makes a move, the board jumps back to live. The history is part of the game state, so it's shared with your opponent and survives a page refresh. No database is needed.
+
+### Premoves
+While it's your opponent's (or the AI's) turn, click any square or wall gap to queue a premove. You can queue as many as you like. They're played automatically, one per turn and in order, as soon as it's your turn.
+- Premoves are shown only on your own screen, in amber shades from dark (played first) to light (played last). For pawn premoves, your pawn is drawn on the last premoved square.
+- Anything can be queued. Each premove is checked only when its turn comes. If it's illegal then (for example, a new wall blocks it), it and every premove after it are discarded silently.
+- **Clear premoves** removes the whole queue.
+
 ### Rules
 - P1 (red) starts top-centre and must reach the bottom row. P2 (blue) starts bottom-centre and must reach the top row. The edge each player is racing to is faintly tinted in their colour.
 - Walls block both players and can't be placed on the outer border or on top of another wall.
@@ -102,6 +111,7 @@ src/
     GameModel.js            Pure rules engine: moves, jumps, walls, path check, win
     RoomModel.js            Room code, seats, status, match settings, rematch votes
     SettingsModel.js        Persisted user preferences
+    PremoveQueue.js         The local player's queued premoves (never sent to the opponent)
   views/
     BoardView.js            SVG board rendering and pointer input
     GameView.js             HUD, status, banner and footer around the board

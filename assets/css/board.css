@@ -77,6 +77,33 @@
   animation: pulse 0.9s infinite;
 }
 
+/* Whole-square hit areas – only active while queuing premoves */
+.cell-hit {
+  fill: transparent;
+  pointer-events: none;
+}
+
+.board[data-mode="premove"] .cell-hit {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+/* Premoves (only ever drawn on the local player's own board).
+   Colour/shade is set inline: one hue, dark = played first → light = played last. */
+.premove-cell {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.premove-wall {
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.wall-preview--premove {
+  stroke: hsl(38 95% 55% / 0.6);
+}
+
 /* Legal-move markers */
 .move-target {
   cursor: pointer;
