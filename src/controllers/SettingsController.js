@@ -34,9 +34,21 @@ export class SettingsController {
     });
   }
 
+  #openListeners = [];
+
+  /** Run `fn` every time the dialog opens (e.g. to refresh the profile section). */
+  onOpen(fn) {
+    this.#openListeners.push(fn);
+  }
+
   open() {
     this.refresh();
+    for (const fn of this.#openListeners) fn();
     this.view.open();
+  }
+
+  close() {
+    this.view.close();
   }
 
   /** Re-render the dialog if it is open (session state may have changed). */

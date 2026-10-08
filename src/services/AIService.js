@@ -11,17 +11,18 @@ export class AIService {
   /**
    * @param {object} game GameModel.toJSON()
    * @param {0|1} player
-   * @param {'easy'|'medium'|'hard'} difficulty
+   * @param {"easy"|"medium"|"hard"} difficulty
+   * @param {number} [seed] 32-bit game seed; makes the move reproducible (server verification)
    * @returns {Promise<{action:object, depth:number, nodes:number, ms:number, score:number}>}
    */
-  async chooseAction(game, player, difficulty) {
+  async chooseAction(game, player, difficulty, seed) {
     const worker = this.#getWorker();
-    if (!worker) return this.#runInline(game, player, difficulty);
+    if (!worker) return this.#runInline(game, player, difficulty, seed);
 
     const id = this.#nextId++;
     return new Promise((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
-      worker.postMessage({ id, game, player, difficulty });
+      worker.postMessage({ id, game, player, difficulty, seed });
     });
   }
 
@@ -64,10 +65,11 @@ export class AIService {
     }
   }
 
-  async #runInline(game, player, difficulty) {
-    const { chooseAction } = await import('../ai/AIEngine.js');
+  async #runInline(game, player, difficulty, seed) {
+    const { chooseAction, seededRandom } = await import('../ai/AIEngine.js');
     // Yield a frame so the "thinking" state can paint first.
     await new Promise((r) => setTimeout(r, 30));
-    return chooseAction(game, player, difficulty);
+    const random = Number.isInteger(seed) ? seededRandom(seed, game.history?.length ?? 0) : Math.random;
+    return chooseAction(game, player, difficulty, random);
   }
 }

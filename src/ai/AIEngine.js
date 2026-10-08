@@ -386,10 +386,10 @@ export class SearchState {
 // ------------------------------------------------------------------ search
 
 class Searcher {
-  constructor(state, level, deadline) {
+  constructor(state, level) {
     this.s = state;
     this.level = level;
-    this.deadline = deadline;
+    this.maxNodes = level.maxNodes ?? Infinity;
     this.tt = new Map();
     this.nodes = 0;
   }
@@ -436,7 +436,9 @@ class Searcher {
 
   /** Negamax with alpha-beta pruning and a transposition table (memoization). */
   negamax(depth, alpha, beta, ply) {
-    if ((++this.nodes & 255) === 0 && now() > this.deadline) throw TIMEOUT;
+    // A fixed work budget (not a clock) keeps the search deterministic on every device,
+    // so the server can replay an AI game and get exactly the same moves.
+    if (++this.nodes > this.maxNodes) throw TIMEOUT;
 
     const s = this.s;
     if (s.hasWon(1 - s.turn)) return -(WIN - ply); // previous mover already won
@@ -519,6 +521,18 @@ class Searcher {
 // ---------------------------------------------------------------- public API
 
 /**
+ * Deterministic RNG for one AI move: the same (game seed, ply) always yields
+ * the same sequence, in the browser and on the server.
+ * @param {number} seed  32-bit game seed
+ * @param {number} ply   number of actions played before this move
+ * @returns {() => number} RNG in [0, 1)
+ */
+export function seededRandom(seed, ply) {
+  const next = mulberry32((Math.imul(seed >>> 0, 0x9e3779b1) ^ (ply * 0x85ebca6b)) >>> 0);
+  return () => next() / 4294967296;
+}
+
+/**
  * Picks an action for `player` in the given position.
  * @param {object} game  GameModel.toJSON() output
  * @param {0|1} player   the AI's seat (must be the side to move)
@@ -532,7 +546,7 @@ export function chooseAction(game, player, difficulty = 'medium', random = Math.
   const state = new SearchState(game);
   if (state.turn !== player) throw new Error('It is not the AI\'s turn.');
 
-  const searcher = new Searcher(state, level, start + level.timeMs);
+  const searcher = new Searcher(state, level);
   let scored = null;
   let depthReached = 0;
   let preferred = -1;

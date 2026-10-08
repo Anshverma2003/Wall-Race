@@ -1,16 +1,16 @@
 import { EventEmitter } from '../core/EventEmitter.js';
 import { NETWORK, ROOM, STORAGE_KEYS } from '../config.js';
 import { GameModel } from '../models/GameModel.js';
-import { RoomStatus } from '../models/RoomModel.js';
+import { RoomStatus, sanitizeCard } from '../models/RoomModel.js';
 import { PeerService } from '../services/PeerService.js';
 import { copyText } from '../utils/clipboard.js';
-import { generateId, generateRoomCode, isValidRoomCode, randomInt } from '../utils/random.js';
+import { generateId, generateRoomCode, generateUuid, isValidRoomCode, randomInt } from '../utils/random.js';
 
 /**
  * Network protocol (all messages are JSON objects with a `t` field):
  *
  *  guest → host
- *    hello   { playerId }         ask to take (or reclaim) seat P2
+ *    hello   { playerId, card }   ask to take (or reclaim) seat P2; card = {id, name, tag} profile
  *    action  { action }           move / wall intent, validated by the host
  *    rematch {}                   vote to play again
  *    leave   {}                   leaving the room on purpose
@@ -36,6 +36,10 @@ export class RoomController extends EventEmitter {
   #busy = false;
   #welcomeTimer = null;
   #gameController = null;
+  /** Verified public cards (name, tag, rating) by player id. */
+  #cards = new Map();
+  /** Match ids already reported from this tab. */
+  #reported = new Set();
 
   /**
    * @param {{
@@ -48,6 +52,9 @@ export class RoomController extends EventEmitter {
    *   lobbyView: import('../views/LobbyView.js').LobbyView,
    *   modal: import('../views/ModalView.js').ModalView,
    *   toast: import('../views/ToastView.js').ToastView,
+   *   player: import('../models/PlayerModel.js').PlayerModel,
+   *   supabase: import('../services/SupabaseService.js').SupabaseService,
+   *   results: import('../services/ResultsService.js').ResultsService,
    * }} deps
    */
   constructor(deps) {
@@ -111,7 +118,11 @@ export class RoomController extends EventEmitter {
   get isActive() { return this.room.isActive; }
   get status() { return this.room.status; }
   get localIndex() { return this.room.localIndex; }
-  get opponentName() { return 'Opponent'; }
+  get opponentName() { return this.#opponentCard?.name ?? 'Opponent'; }
+  get opponentLabel() {
+    const card = this.#opponentCard;
+    return card ? `${card.name}#${card.tag}` : 'Opponent';
+  }
   get opponentOnline() { return this.room.opponentConnected && !this.reconnecting; }
   get opponentThinking() { return false; }
   get rematchVotes() { return this.room.rematch; }
@@ -169,7 +180,7 @@ export class RoomController extends EventEmitter {
       }
       if (!code) throw new Error('Could not find a free room code. Please try again.');
 
-      this.room.openAsHost(code, this.playerId, this.settings.matchSettings);
+      this.room.openAsHost(code, this.playerId, this.settings.matchSettings, this.player.card);
       this.game = null;
       this.homeView.setMessage('');
       this.#changed();
@@ -193,7 +204,7 @@ export class RoomController extends EventEmitter {
       this.#hostConnId = await this.network.join(code);
       this.room.openAsGuest(code);
       this.game = null;
-      this.network.send(this.#hostConnId, { t: 'hello', playerId: this.playerId });
+      this.network.send(this.#hostConnId, this.#hello());
       this.homeView.setMessage('Connected. Joining room…');
 
       // The host answers with `sync` (or `reject`).
@@ -251,6 +262,7 @@ export class RoomController extends EventEmitter {
     });
     this.room.status = RoomStatus.PLAYING;
     this.room.rematch = [false, false];
+    this.room.matchId = generateUuid();
     this.#broadcast({ kind: 'start', first });
   }
 
@@ -312,7 +324,7 @@ export class RoomController extends EventEmitter {
     else this.#broadcast({ kind: 'rematch', by: player });
   }
 
-  #admitGuest(connId, playerId) {
+  #admitGuest(connId, playerId, card) {
     if (typeof playerId !== 'string' || !playerId) return;
     const seat = this.room.seats[1];
     const otherPlayer = seat.playerId && seat.playerId !== playerId;
@@ -329,7 +341,7 @@ export class RoomController extends EventEmitter {
     }
 
     const returning = seat.playerId === playerId && this.room.status !== RoomStatus.LOBBY;
-    this.room.seats[1] = { playerId, connected: true };
+    this.room.seats[1] = { playerId, connected: true, card: sanitizeCard(card) };
     this.#guestConnId = connId;
 
     this.toast.show(returning ? 'Your opponent reconnected.' : 'Player 2 joined the room.', 'success');
@@ -357,6 +369,7 @@ export class RoomController extends EventEmitter {
     this.#sendSync(event);
     this.#changed();
     this.#route(event);
+    this.#reportResult();
   }
 
   #sendSync(event) {
@@ -389,7 +402,7 @@ export class RoomController extends EventEmitter {
       if (!ok) throw lastErr ?? new Error('Could not reopen the room.');
 
       this.room.restore(session.room);
-      this.room.seats[0] = { playerId: this.playerId, connected: true };
+      this.room.seats[0] = { playerId: this.playerId, connected: true, card: this.player.card };
       this.room.seats[1].connected = false;
       this.game = session.game ? GameModel.fromJSON(session.game) : null;
       if (this.room.status === RoomStatus.LOBBY || !this.game) {
@@ -424,6 +437,7 @@ export class RoomController extends EventEmitter {
         this.homeView.setMessage('');
         this.#changed();
         this.#route(msg.event ?? null);
+        this.#reportResult();
         break;
       }
       case 'reject':
@@ -457,7 +471,7 @@ export class RoomController extends EventEmitter {
       if (!this.room.isActive || this.room.code !== code) return; // user left meanwhile
       try {
         this.#hostConnId = await this.network.join(code);
-        this.network.send(this.#hostConnId, { t: 'hello', playerId: this.playerId });
+        this.network.send(this.#hostConnId, this.#hello());
         return; // `sync` clears the reconnecting flag
       } catch {
         /* retry */
@@ -481,7 +495,7 @@ export class RoomController extends EventEmitter {
 
     switch (msg.t) {
       case 'hello':
-        this.#admitGuest(connId, msg.playerId);
+        this.#admitGuest(connId, msg.playerId, msg.card);
         break;
       case 'action':
         if (connId === this.#guestConnId) this.#applyAction(1, msg.action);
@@ -522,11 +536,16 @@ export class RoomController extends EventEmitter {
   #enterLobby() {
     this.#gameController?.closeModals();
     this.app.showScreen('lobby');
+    this.#renderLobby();
+    this.#loadRatings();
+  }
+
+  #renderLobby() {
     this.lobbyView.render({
       code: this.room.code,
       isHost: this.room.isHost,
       localIndex: this.room.localIndex,
-      seats: this.room.seats,
+      seats: this.room.seats.map((s) => ({ ...s, card: this.#verifiedCard(s.card) })),
       settings: this.room.settings,
     });
   }
@@ -577,6 +596,60 @@ export class RoomController extends EventEmitter {
   async #copy(text, successMsg) {
     const ok = await copyText(text);
     this.toast.show(ok ? successMsg : `Copy failed. Your code is ${this.room.code}.`, ok ? 'success' : 'warning');
+  }
+
+  // ====================================================== player profiles
+
+  /** Join / rejoin request with this device's seat id and public profile. */
+  #hello() {
+    return { t: 'hello', playerId: this.playerId, card: this.player.card };
+  }
+
+  get #opponentCard() {
+    const index = this.room.opponentIndex;
+    return index === null ? null : this.#verifiedCard(this.room.seats[index].card);
+  }
+
+  /** Prefer the name / tag / rating from the database over what a peer claims. */
+  #verifiedCard(card) {
+    if (!card) return null;
+    const known = this.#cards.get(card.id);
+    return known ? { ...card, name: known.name, tag: known.tag, rating: known.rating } : card;
+  }
+
+  /** Fetch both players' public cards (name, tag, rating) for the lobby. */
+  async #loadRatings() {
+    const ids = this.room.seats.map((s) => s.card?.id).filter((id) => id && !this.#cards.has(id));
+    if (!ids.length) return;
+    try {
+      for (const card of await this.supabase.playerCards(ids)) this.#cards.set(card.id, card);
+      if (this.room.isActive && this.room.status === RoomStatus.LOBBY) this.#renderLobby();
+      this.emit('change');
+    } catch {
+      /* offline: show the names the players sent */
+    }
+  }
+
+  /**
+   * When a game finishes, each player's browser reports it. It reaches the
+   * leaderboard only after the server replays it and both reports agree.
+   */
+  async #reportResult() {
+    const { room, game } = this;
+    if (room.status !== RoomStatus.FINISHED || !game?.isOver || !room.matchId) return;
+    if (this.#reported.has(room.matchId)) return;
+    const players = room.seats.map((s) => s.card?.id);
+    if (!players.every(Boolean) || players[0] === players[1] || !this.player.exists) return;
+
+    this.#reported.add(room.matchId);
+    const me = room.localIndex;
+    const result = await this.results.reportOnline({ matchId: room.matchId, players, game: game.toJSON() });
+    if (result?.status === 'recorded' && Array.isArray(result.deltas)) {
+      const delta = result.deltas[me];
+      this.toast.show(`Rating ${result.ratings[me]} (${delta >= 0 ? '+' : ''}${delta})`, delta >= 0 ? 'success' : 'info', 4500);
+      this.#cards.clear(); // ratings changed
+      this.emit('rated');
+    }
   }
 
   // ====================================================== session storage

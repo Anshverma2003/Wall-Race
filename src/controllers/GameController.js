@@ -180,7 +180,7 @@ export class GameController {
         canForward: viewing,
       },
       footer: s.footer,
-      names: [0, 1].map((i) => (i === me ? 'You' : s.opponentName)),
+      names: [0, 1].map((i) => (i === me ? 'You' : s.opponentLabel ?? s.opponentName)),
       thinking: [0, 1].map((i) => i !== me && s.opponentThinking),
       status,
       hint,

@@ -66,6 +66,38 @@ The AI is **pure code: no language model, no API, no internet**. It runs in a We
 
 It always takes a winning move, and it can never place an illegal wall: every action is re-checked by `GameModel`. You can tune the levels in `AI_LEVELS` in [src/config.js](src/config.js). A vs-AI game in progress survives a page refresh (`wallrace.aiSession` in localStorage).
 
+The AI stops searching after a fixed amount of work (`maxNodes`), not after a time limit, and its randomness is seeded per game. The same position therefore always produces the same move on every device, which lets the server re-check vs-AI wins.
+
+## Player profile and leaderboard
+
+### Your profile (`name#tag`)
+- On first open every player picks a **name** and a **4-digit tag**, for example `baba yaga#2003`.
+- **The tag is unique**: no two players can have the same tag (0000–9999, so up to 10,000 players). If a tag is taken you are told straight away.
+- **The name** can be anything (3–16 letters, numbers, spaces, `_` or `-`) and can change any time. **The tag** can change once every 30 days; Settings shows the date it unlocks.
+- There is no login. Instead each profile has a secret **recovery code** (`WR-XXXX-XXXX-XXXX-XXXX`), shown once on creation and later in Settings. Entering it on another device, or after clearing the browser, restores the profile.
+
+### Leaderboards (home → Leaderboard)
+| Board | Ranked by | Columns |
+|-------|-----------|---------|
+| Online | Elo rating (everyone starts at 1200, K = 32) | Rating, W–L, win %, best streak |
+| vs Hard AI | Wins against the Hard AI (last 7 days, last 30 days or all time); ties go to the fastest win | Hard wins, fastest win (your moves, board size), last win |
+
+The top 50 are shown, plus your own row wherever you rank.
+
+### How results are kept honest
+Finished games are sent to a Vercel function, [api/report.js](api/report.js), which **replays every move** with the real `GameModel` before saving anything:
+- **Online:** both players' browsers report the game, and it counts only when the two reports are identical. Ratings are then updated once, in a single database transaction.
+- **vs Hard AI:** every AI move is recomputed with the game's seed and must match exactly, so a forged game against a "dumb" AI is rejected.
+
+Browsers use Supabase's **publishable** key and can only call the functions in [supabase/schema.sql](supabase/schema.sql) that are granted to `anon` (create, read or update their own profile, read leaderboards). Only the Vercel function holds the **secret** key and can write results.
+
+### Setup
+1. **Database:** in Supabase open SQL Editor, paste the whole of [supabase/schema.sql](supabase/schema.sql) and click Run. It is safe to run again.
+2. **Secret key:** in Supabase open Project Settings → API Keys and copy a **secret** key (`sb_secret_...`). In Vercel open the project → Settings → Environment Variables and add `SUPABASE_SECRET_KEY` with that value for Production and Preview. Never put this key in the frontend or in git.
+3. Redeploy. The publishable key and project URL are already in [src/config.js](src/config.js).
+
+On a local static server (no Vercel functions) profiles and leaderboards work, but finished games are not recorded.
+
 ## Settings (⚙ top right)
 
 | Setting | Who | Notes |
@@ -84,7 +116,9 @@ Match settings can be changed in the lobby (the guest sees changes live) or betw
 | `wallrace.settings` | Theme, board orientation, preferred grid size and wall limit |
 | `wallrace.profile` | A random player id, used to give a reconnecting player back their seat |
 | `wallrace.session` | The current room (for the host, also the full game state). Expires after 30 minutes. |
-| `wallrace.aiSession` | The vs-AI game in progress (difficulty and game state). Expires after 30 minutes. |
+| `wallrace.aiSession` | The vs-AI game in progress (difficulty, seed and game state). Expires after 30 minutes. |
+| `wallrace.player` | Your leaderboard profile (id, name, tag, stats) and recovery code |
+| `wallrace.pendingReports` | Finished games that could not be sent yet (retried on the next visit) |
 
 - **Guest refreshes or drops:** their seat is held mid-match. The page rejoins automatically, and the host sees a "waiting for opponent" banner in the meantime.
 - **Host refreshes:** the host reopens the same room code with the saved game, and the guest reconnects automatically (it retries for about 20 seconds).
@@ -112,9 +146,12 @@ src/
     RoomModel.js            Room code, seats, status, match settings, rematch votes
     SettingsModel.js        Persisted user preferences
     PremoveQueue.js         The local player's queued premoves (never sent to the opponent)
+    PlayerModel.js          Your name#tag profile, recovery code and validation rules
   views/
     BoardView.js            SVG board rendering and pointer input
     GameView.js             HUD, status, banner and footer around the board
+    ProfileView.js          First-open name screen, recovery, Profile section in Settings, top-bar badge
+    LeaderboardView.js      Leaderboard screen and tables
     HomeView.js / LobbyView.js / SettingsView.js / ModalView.js / ToastView.js / ScreenView.js
   controllers/
     AppController.js        Composition root and screen navigation
@@ -122,18 +159,33 @@ src/
     AIController.js         vs-AI session: local game, asks the AI for its moves
     GameController.js       Board input → actions, game-over and rematch flow (works with either session)
     SettingsController.js   Settings dialog ↔ model, theme, host-only gating
+    ProfileController.js    Create / restore / rename profile, tag availability
+    LeaderboardController.js  Loads the leaderboards
   services/
     PeerService.js          PeerJS wrapper with heartbeat and disconnect detection
     AIService.js            Promise wrapper around the AI worker (main-thread fallback)
+    SupabaseService.js      Calls the public database functions (publishable key)
+    ResultsService.js       Sends finished games to /api/report, retries later if offline
     StorageService.js       Safe localStorage wrapper
   utils/
-    random.js               Room codes and ids (crypto RNG)
+    random.js               Room codes, ids, UUIDs and AI seeds (crypto RNG)
     clipboard.js            Copy with fallback
+```
+
+Server side (Vercel) and database:
+```
+api/report.js               POST /api/report: verify a finished game, then record it
+api/_lib/verify.js          Replays games with GameModel (and the AI for vs-AI wins)
+api/_lib/db.js              Supabase REST calls with the secret key
+supabase/schema.sql         Tables, security rules, profile + leaderboard functions, Elo update
+package.json                Marks the JS as ES modules for the Vercel function (no dependencies)
 ```
 
 ### Networking model
 The **host is authoritative**. The guest sends only *intents* (`action`, `rematch`, `leave`). The host validates each one with `GameModel`, applies it, and broadcasts the full state (`sync`) back. A modified client therefore can't make illegal moves, and the two boards can't drift apart. The protocol is documented at the top of [src/controllers/RoomController.js](src/controllers/RoomController.js).
 
 ## Known limitations
+- Without a login, one person could create two profiles and play themselves to farm rating. New profiles are limited to 10 per network per hour.
+- Someone could have a copy of the Hard AI play for them. The server can confirm that a game is legal, not who chose the moves.
 - If the host closes the tab for good, the room ends. There is no server to keep it alive.
 - Very strict networks (some corporate or mobile carriers) can block WebRTC. PeerJS's default TURN relay helps, but it isn't guaranteed.
