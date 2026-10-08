@@ -8,14 +8,14 @@ const COLUMNS = {
     { key: 'player', label: 'Player', cls: 'col-player' },
     { key: 'rating', label: 'Rating', cls: 'col-num' },
     { key: 'record', label: 'W–L', cls: 'col-num col-opt' },
-    { key: 'winrate', label: 'Win %', cls: 'col-num' },
+    { key: 'winrate', label: 'Win %', short: 'Win%', cls: 'col-num' },
     { key: 'streak', label: 'Best streak', cls: 'col-num col-opt' },
   ],
   ai: [
     { key: 'rank', label: '#', cls: 'col-rank' },
     { key: 'player', label: 'Player', cls: 'col-player' },
-    { key: 'wins', label: 'Hard wins', cls: 'col-num' },
-    { key: 'fastest', label: 'Fastest win', cls: 'col-num' },
+    { key: 'wins', label: 'Hard wins', short: 'Wins', cls: 'col-num' },
+    { key: 'fastest', label: 'Fastest win', short: 'Fastest', cls: 'col-num' },
     { key: 'last', label: 'Last win', cls: 'col-num col-opt' },
   ],
 };
@@ -74,7 +74,22 @@ export class LeaderboardView extends EventEmitter {
 
     const cols = COLUMNS[s.board];
     const head = document.createElement('tr');
-    for (const col of cols) head.appendChild(cell('th', col.label, col.cls));
+    for (const col of cols) {
+      const th = cell('th', '', col.cls);
+      const full = document.createElement('span');
+      full.className = 'th-full';
+      full.textContent = col.label;
+      th.appendChild(full);
+      if (col.short) {
+        // Shorter header on phones so the player names get more room.
+        const short = document.createElement('span');
+        short.className = 'th-short';
+        short.textContent = col.short;
+        th.appendChild(short);
+        th.title = col.label;
+      }
+      head.appendChild(th);
+    }
     this.thead.replaceChildren(head);
 
     const rows = s.status === 'ready' ? s.rows ?? [] : [];
@@ -125,24 +140,46 @@ export class LeaderboardView extends EventEmitter {
         };
 
     for (const col of cols) {
+      if (col.key === 'fastest' && r.fastest) {
+        // "9 moves · 7×7" on wide screens; the board size drops to its own line on phones.
+        const td = cell('td', `${r.fastest} moves`, col.cls);
+        const grid = document.createElement('span');
+        grid.className = 'lb-grid';
+        grid.textContent = `${r.fastest_grid}×${r.fastest_grid}`;
+        td.appendChild(grid);
+        tr.appendChild(td);
+        continue;
+      }
       if (col.key !== 'player') {
         tr.appendChild(cell('td', String(values[col.key] ?? '–'), col.cls));
         continue;
       }
       const td = cell('td', '', col.cls);
+      const id = document.createElement('span');
+      id.className = 'lb-id';
       const name = document.createElement('span');
       name.className = 'lb-name';
       name.textContent = r.name;
       const tag = document.createElement('span');
       tag.className = 'lb-tag';
       tag.textContent = `#${r.tag}`;
-      td.append(name, tag);
+      id.append(name, tag);
       if (isMe) {
         const you = document.createElement('span');
         you.className = 'lb-you';
         you.textContent = 'You';
-        td.appendChild(you);
+        id.appendChild(you);
       }
+
+      // Second line for narrow screens: the columns that are hidden there (W–L, Best streak, Last win).
+      const sub = document.createElement('span');
+      sub.className = 'lb-sub';
+      sub.textContent = cols
+        .filter((c) => c.cls.includes('col-opt'))
+        .map((c) => `${c.label} ${values[c.key] ?? '–'}`)
+        .join(' · ');
+
+      td.append(id, sub);
       tr.appendChild(td);
     }
     return tr;
