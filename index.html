@@ -178,6 +178,7 @@
           <dl class="settings-summary">
             <div><dt>Grid</dt><dd id="lobby-grid">–</dd></div>
             <div><dt>Walls per player</dt><dd id="lobby-walls">–</dd></div>
+            <div><dt>Time per player</dt><dd id="lobby-time">–</dd></div>
           </dl>
         </div>
 
@@ -196,14 +197,16 @@
           <div class="player-chip" id="chip-p0" data-player="0">
             <span class="player-chip__pawn">P1</span>
             <span class="player-chip__info">
-              <span class="player-chip__name">Player 1</span>
+              <span class="player-chip__name-row"><span class="player-chip__name">Player 1</span><span class="player-chip__rating" title="Rating" hidden></span></span>
               <span class="player-chip__walls">Walls: <b>–</b></span>
             </span>
+            <span class="player-chip__clock" role="timer" hidden></span>
           </div>
           <div class="game__status" id="game-status" role="status" aria-live="polite"></div>
           <div class="player-chip player-chip--right" id="chip-p1" data-player="1">
+            <span class="player-chip__clock" role="timer" hidden></span>
             <span class="player-chip__info">
-              <span class="player-chip__name">Player 2</span>
+              <span class="player-chip__name-row"><span class="player-chip__name">Player 2</span><span class="player-chip__rating" title="Rating" hidden></span></span>
               <span class="player-chip__walls">Walls: <b>–</b></span>
             </span>
             <span class="player-chip__pawn">P2</span>
@@ -315,6 +318,10 @@
               </label>
             </div>
           </div>
+          <div class="field" id="setting-time-field">
+            <span class="field__label">Time per player <span class="field__hint">(online games)</span></span>
+            <div class="segmented" id="setting-time" role="radiogroup" aria-label="Time per player"></div>
+          </div>
           <p class="field__note" id="setting-game-note"></p>
         </fieldset>
       </div>
@@ -379,6 +386,7 @@
       <div class="dialog__body dialog__body--center">
         <h2 class="modal__title" id="modal-title"></h2>
         <p class="modal__message" id="modal-message"></p>
+        <p class="modal__note" id="modal-note" hidden></p>
         <div class="modal__actions" id="modal-actions"></div>
       </div>
     </div>

@@ -23,7 +23,7 @@ export class SettingsController {
     document.getElementById('btn-open-settings').addEventListener('click', () => this.open());
 
     this.view.on('change', (partial) => {
-      const touchesMatch = 'gridSize' in partial || 'wallLimit' in partial;
+      const touchesMatch = 'gridSize' in partial || 'wallLimit' in partial || 'timeMinutes' in partial;
       if (touchesMatch && !this.#matchEditable) return;
       this.settings.update(partial);
     });
@@ -56,7 +56,7 @@ export class SettingsController {
     const session = this.#activeSession;
     const values = this.settings.toJSON();
     if (session) Object.assign(values, session.matchSettings); // show what the match actually uses
-    this.view.render(values, { gameEditable: this.#matchEditable, note: this.#note });
+    this.view.render(values, { gameEditable: this.#matchEditable, note: this.#note, showTime: session?.kind !== 'ai' });
   }
 
   applyTheme() {

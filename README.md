@@ -46,6 +46,13 @@ While it's your opponent's (or the AI's) turn, click any square or wall gap to q
 - **A wall is rejected if it would leave either player with no possible path to their goal.** This covers sealing a row from edge to edge, boxing a pawn in, and similar traps.
 - **Jumping:** if the pawns are face to face, you may jump straight over your opponent. If a wall (or the board edge) is behind them, you can step diagonally to either side of them instead.
 
+### Online clock and leaving
+- **Chess clock:** each player has their own time (host picks **1, 3, 5 or 10 minutes**, default 3) and only the clock of the player to move runs. No bonus time per move. **Running out of time loses the game.** Clocks are for online games only, not vs AI.
+- **Leave button during a game:** immediate loss. The opponent wins and gets the rating points the leaver loses (normal Elo).
+- **Disconnect (closed tab, lost internet):** the game pauses and the player has **60 seconds** to come back. Otherwise they lose, exactly like leaving.
+- **Early leave:** leaving or disconnecting **before making any move and within 10 seconds of the start** cancels the game. Nobody's rating changes.
+- Both players' ratings are shown next to their names, and the game-over card shows your rating change (e.g. **Rating 1232 (+16)**).
+
 ## Play vs AI
 
 Choose **Easy / Medium / Hard** on the home screen and press **Play vs AI**. You play P1 (red), the AI plays P2 (blue), and who starts is random. Grid size and wall limit come from ⚙ Settings.
@@ -86,13 +93,15 @@ The top 50 are shown, plus your own row wherever you rank.
 
 ### How results are kept honest
 Finished games are sent to a Vercel function, [api/report.js](api/report.js), which **replays every move** with the real `GameModel` before saving anything:
-- **Online:** both players' browsers report the game, and it counts only when the two reports are identical. Ratings are then updated once, in a single database transaction.
+- **Online, won on the board or on time:** both players' browsers report the game, and it counts only when the two reports are identical. Ratings are then updated once, in a single database transaction. For a timeout the server also checks that the loser was the player to move.
+- **Online, forfeit (left or disconnected):** one report is enough, because the opponent is gone. The server only accepts it for a game both players confirmed starting (`online_match_starts`) and applies the 10-second early-leave rule. To stop fake "my opponent left" claims, every browser sends a **"still here" heartbeat** to the database every 15 s during an online game, signed with its own recovery code. A forfeit claimed by the winner only counts if the accused player has been **silent for 45 s**. A player reporting their own loss (Leave button) is believed straight away. If both players are still online but can't reach each other, neither claim counts and the game has no result.
 - **vs Hard AI:** every AI move is recomputed with the game's seed and must match exactly, so a forged game against a "dumb" AI is rejected.
 
 Browsers use Supabase's **publishable** key and can only call the functions in [supabase/schema.sql](supabase/schema.sql) that are granted to `anon` (create, read or update their own profile, read leaderboards). Only the Vercel function holds the **secret** key and can write results.
 
 ### Setup
 1. **Database:** in Supabase open SQL Editor, paste the whole of [supabase/schema.sql](supabase/schema.sql) and click Run. It is safe to run again.
+   - **Already set up before the chess clock existed?** Run these once instead, in order: [002_clock_and_forfeits.sql](supabase/migrations/002_clock_and_forfeits.sql), then [003_forfeit_heartbeat.sql](supabase/migrations/003_forfeit_heartbeat.sql).
 2. **Secret key:** in Supabase open Project Settings → API Keys and copy a **secret** key (`sb_secret_...`). In Vercel open the project → Settings → Environment Variables and add `SUPABASE_SECRET_KEY` with that value for Production and Preview. Never put this key in the frontend or in git.
 3. Redeploy. The publishable key and project URL are already in [src/config.js](src/config.js).
 
@@ -147,6 +156,7 @@ src/
     SettingsModel.js        Persisted user preferences
     PremoveQueue.js         The local player's queued premoves (never sent to the opponent)
     PlayerModel.js          Your name#tag profile, recovery code and validation rules
+    ClockModel.js           Chess clock (host runs it, guest mirrors it from each sync)
   views/
     BoardView.js            SVG board rendering and pointer input
     GameView.js             HUD, status, banner and footer around the board
@@ -178,6 +188,7 @@ api/report.js               POST /api/report: verify a finished game, then recor
 api/_lib/verify.js          Replays games with GameModel (and the AI for vs-AI wins)
 api/_lib/db.js              Supabase REST calls with the secret key
 supabase/schema.sql         Tables, security rules, profile + leaderboard functions, Elo update
+supabase/migrations/        Changes for databases created with an older schema.sql
 package.json                Marks the JS as ES modules for the Vercel function (no dependencies)
 ```
 

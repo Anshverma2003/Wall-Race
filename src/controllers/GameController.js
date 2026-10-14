@@ -45,6 +45,8 @@ export class GameController {
   #premoveInFlight = false;
   /** Invalidates a scheduled premove when state changes again first. */
   #premoveTimer = null;
+  /** Repaints clocks / countdowns several times a second while they run. */
+  #ticker = null;
 
   /**
    * @param {{
@@ -107,7 +109,25 @@ export class GameController {
   /** Re-render without an event (e.g. flip-board setting changed, AI started thinking). */
   refresh() {
     const s = this.#session;
-    if (s && s.status !== RoomStatus.LOBBY) this.#render();
+    if (!s || s.status === RoomStatus.LOBBY) return;
+    this.#render();
+    this.#syncGameOverModal(); // e.g. the rating result arrived
+  }
+
+  /** Keep clocks and countdown banners moving between state updates. */
+  #startTicker() {
+    if (this.#ticker) return;
+    this.#ticker = setInterval(() => {
+      const s = this.#session;
+      if (!s || (!s.clock?.isRunning && !s.banner)) {
+        clearInterval(this.#ticker);
+        this.#ticker = null;
+        if (s) this.view.renderClocks(s.clock ?? null);
+        return;
+      }
+      this.view.renderClocks(s.clock);
+      this.view.setBanner(s.banner);
+    }, 250);
   }
 
   /** Called whenever a session starts, ends or returns to the lobby. */
@@ -153,7 +173,8 @@ export class GameController {
     if (viewing) hint = 'Viewing an earlier position. Press >| to return to the game.';
     else if (live.isOver) hint = 'Game over.';
     else if (!myTurn) {
-      const waiting = s.opponentThinking ? `${s.opponentName} is thinking…` : `Waiting for ${s.opponentName.toLowerCase()} to play…`;
+      const who = s.opponentName === 'Opponent' ? 'your opponent' : s.opponentName; // keep real names as typed
+      const waiting = s.opponentThinking ? `${s.opponentName} is thinking…` : `Waiting for ${who} to play…`;
       hint = queued
         ? `${waiting} ${queued} premove${queued === 1 ? '' : 's'} queued.`
         : `${waiting} You can ${this.view.isTouch ? 'tap' : 'click'} squares or gaps to queue premoves.`;
@@ -181,12 +202,15 @@ export class GameController {
       },
       footer: s.footer,
       names: [0, 1].map((i) => (i === me ? 'You' : s.opponentLabel ?? s.opponentName)),
+      ratings: s.ratings ?? [null, null],
+      clock: s.clock ?? null,
       thinking: [0, 1].map((i) => i !== me && s.opponentThinking),
       status,
       hint,
       banner: s.banner,
       offline: [0, 1].map((i) => i !== me && !online),
     });
+    if (s.clock?.isRunning || s.banner) this.#startTicker();
   }
 
   #announce(event) {
@@ -227,15 +251,18 @@ export class GameController {
     const theyVoted = s.rematchNeedsBoth && s.rematchVotes[1 - me];
     const online = s.opponentOnline;
 
-    let message = won ? 'You reached the other side first.' : `${s.opponentName} reached the other side first.`;
-    if (!online) message += ' Your opponent is offline.';
-    else if (theyVoted && !iVoted) message += ' Your opponent wants a rematch.';
-    else if (iVoted) message += ' Waiting for your opponent…';
+    let message = endMessage(game.endReason, won, s.opponentName);
+    if (game.endReason !== 'forfeit') { // after a forfeit the opponent is gone anyway
+      if (!online) message += ' Your opponent is offline.';
+      else if (theyVoted && !iVoted) message += ' Your opponent wants a rematch.';
+      else if (iVoted) message += ' Waiting for your opponent…';
+    }
 
     this.modal.show({
       id: GAME_OVER_MODAL,
       title: won ? 'You win! 🏆' : 'You lose',
       message,
+      note: ratingNote(s.ratingChange),
       actions: [
         { label: 'Exit', variant: 'ghost', onClick: () => s.leave() },
         {
@@ -349,5 +376,41 @@ export class GameController {
         { label: 'Leave', variant: 'primary', onClick: () => s.leave() },
       ],
     });
+  }
+}
+
+// ------------------------------------------------------------------ helpers
+
+/** Why the game ended, from the local player's point of view. */
+function endMessage(reason, won, opponent) {
+  switch (reason) {
+    case 'timeout':
+      return won ? `${opponent} ran out of time.` : 'You ran out of time.';
+    case 'forfeit':
+      return won ? `${opponent} left the game.` : 'You were away too long, so the game was lost.';
+    default:
+      return won ? 'You reached the other side first.' : `${opponent} reached the other side first.`;
+  }
+}
+
+/** The rating line in the game-over card (online games only). */
+function ratingNote(change) {
+  if (!change) return null;
+  switch (change.status) {
+    case 'pending':
+      return { text: 'Updating rating…', tone: 'muted' };
+    case 'done': {
+      const sign = change.delta > 0 ? '+' : change.delta < 0 ? '−' : '±';
+      return {
+        text: `Rating ${change.rating} (${sign}${Math.abs(change.delta)})`,
+        tone: change.delta > 0 ? 'up' : change.delta < 0 ? 'down' : 'muted',
+      };
+    }
+    case 'disputed':
+      return { text: "Your opponent was still online, so this game doesn't count – no rating change.", tone: 'muted' };
+    case 'cancelled':
+      return { text: 'Game cancelled – no rating change.', tone: 'muted' };
+    default:
+      return { text: "Rating couldn't be updated for this game.", tone: 'muted' };
   }
 }

@@ -14,6 +14,7 @@ export class LobbyView extends EventEmitter {
     this.players = document.getElementById('lobby-players');
     this.grid = document.getElementById('lobby-grid');
     this.walls = document.getElementById('lobby-walls');
+    this.time = document.getElementById('lobby-time');
     this.startBtn = document.getElementById('btn-start-game');
     this.waiting = document.getElementById('lobby-waiting');
     this.editBtn = document.getElementById('btn-lobby-settings');
@@ -73,6 +74,7 @@ export class LobbyView extends EventEmitter {
 
     this.grid.textContent = `${settings.gridSize} × ${settings.gridSize}`;
     this.walls.textContent = settings.wallLimit === null ? 'Unlimited' : String(settings.wallLimit);
+    this.time.textContent = `${settings.timeMinutes} min`;
 
     this.editBtn.hidden = !isHost;
     this.startBtn.hidden = !isHost;
