@@ -64,6 +64,11 @@ export class SupabaseService {
     return this.rpc('update_player', { p_code: code, p_name: name, p_tag: tag });
   }
 
+  /** "I'm still in this online game" – lets the server reject fake forfeit claims against me. */
+  matchHeartbeat(code, matchId) {
+    return this.rpc('match_heartbeat', { p_code: code, p_match_id: matchId });
+  }
+
   playerCards(ids) {
     return this.rpc('player_cards', { p_ids: ids });
   }

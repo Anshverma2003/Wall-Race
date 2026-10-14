@@ -320,12 +320,35 @@ create table if not exists public.online_match_starts (
   p1           uuid not null references public.players (id) on delete cascade,
   p0_confirmed boolean not null default false,
   p1_confirmed boolean not null default false,
+  p0_seen_at   timestamptz,          -- last "still here" heartbeat
+  p1_seen_at   timestamptz,
   created_at   timestamptz not null default now()
 );
 alter table public.online_match_starts enable row level security;
 revoke all on public.online_match_starts from anon, authenticated;
 
--- Called by /api/report when a game starts (one call per player).
+alter table public.online_match_starts add column if not exists p0_seen_at timestamptz;
+alter table public.online_match_starts add column if not exists p1_seen_at timestamptz;
+
+-- Browser → database (publishable key): "I'm still in this game".
+create or replace function public.match_heartbeat(p_code text, p_match_id uuid)
+returns json language plpgsql volatile security definer
+set search_path = public, extensions as $$
+declare
+  v_player uuid;
+begin
+  select id into v_player from public.players where secret_hash = public._secret_hash(p_code);
+  if v_player is null then raise exception 'BAD_CODE'; end if;
+
+  update public.online_match_starts set
+    p0_seen_at = case when p0 = v_player then now() else p0_seen_at end,
+    p1_seen_at = case when p1 = v_player then now() else p1_seen_at end
+  where match_id = p_match_id and v_player in (p0, p1);
+
+  return json_build_object('status', case when found then 'ok' else 'unknown' end);
+end $$;
+
+-- Starting a game also counts as being seen.
 create or replace function public.register_online_start(
   p_match_id uuid, p_reporter uuid, p_p0 uuid, p_p1 uuid
 )
@@ -342,7 +365,9 @@ begin
 
   update public.online_match_starts set
     p0_confirmed = p0_confirmed or p_reporter = p0,
-    p1_confirmed = p1_confirmed or p_reporter = p1
+    p1_confirmed = p1_confirmed or p_reporter = p1,
+    p0_seen_at   = case when p_reporter = p0 then now() else p0_seen_at end,
+    p1_seen_at   = case when p_reporter = p1 then now() else p1_seen_at end
   where match_id = p_match_id and p0 = p_p0 and p1 = p_p1
   returning * into v_start;
 
@@ -404,7 +429,8 @@ end $$;
 -- Replaces the previous version (it had no result reason).
 drop function if exists public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint);
 
--- Called by /api/report after it replayed and verified the game.
+-- Called by /api/report after it replayed and verified the game. A forfeit claimed
+-- by the winner only counts if the accused player stopped sending heartbeats.
 create or replace function public.submit_online_report(
   p_match_id uuid, p_reporter uuid, p_payload_hash text,
   p_p0 uuid, p_p1 uuid, p_winner smallint, p_moves integer, p_grid smallint,
@@ -415,6 +441,8 @@ set search_path = public as $$
 declare
   v_match  public.online_matches;
   v_start  public.online_match_starts;
+  v_loser  uuid;
+  v_seen   timestamptz;
   v_mine   text;
   v_theirs text;
 begin
@@ -443,6 +471,15 @@ begin
     -- Early leave (no move yet, game under 10 s old): cancelled, nobody's rating changes.
     if coalesce(p_loser_moves, 0) = 0 and now() - v_start.created_at < interval '10 seconds' then
       return json_build_object('status', 'cancelled');
+    end if;
+    -- Claimed by the winner: the accused must really be gone (no heartbeat for 45 s).
+    -- A player reporting their own loss is always believed.
+    v_loser := case when p_winner = 0 then p_p1 else p_p0 end;
+    if p_reporter <> v_loser then
+      v_seen := case when v_loser = v_start.p0 then v_start.p0_seen_at else v_start.p1_seen_at end;
+      if v_seen is not null and v_seen > now() - interval '45 seconds' then
+        return json_build_object('status', 'opponent_active');
+      end if;
     end if;
     return public._finalize_online_match(p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason);
   end if;
@@ -505,7 +542,8 @@ grant execute on function
   public.update_player(text, text, text),
   public.player_cards(uuid[]),
   public.leaderboard_online(integer, uuid),
-  public.leaderboard_ai(text, integer, uuid)
+  public.leaderboard_ai(text, integer, uuid),
+  public.match_heartbeat(text, uuid)
 to anon, authenticated;
 
 grant execute on function

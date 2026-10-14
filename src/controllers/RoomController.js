@@ -553,6 +553,7 @@ export class RoomController extends EventEmitter {
           return;
         }
         this.#beginGrace(1);
+        this.#startAliveTimer(); // "still here" pings resume right away
       }
       this.#changed();
       this.#route(null);
@@ -898,18 +899,39 @@ export class RoomController extends EventEmitter {
     this.#clearSession();
   }
 
-  /** While a game is on, refresh the saved session regularly (clock + "still here" time for a host restart). */
+  /**
+   * While a game is on:
+   *  - refresh the saved session regularly (clock + "still here" time for a host restart), and
+   *  - tell the server we are still in the game, so nobody can falsely claim we left.
+   */
   #startAliveTimer() {
+    if (this.#aliveTimer) return; // already running (called on every sync)
+    let lastPing = 0;
+    const tick = () => {
+      if (this.room.status !== RoomStatus.PLAYING) {
+        this.#stopAliveTimer();
+        return;
+      }
+      this.#saveSession();
+      if (Date.now() - lastPing >= MATCH_RULES.HEARTBEAT_MS && this.room.matchId && this.player.code) {
+        lastPing = Date.now();
+        this.supabase.matchHeartbeat(this.player.code, this.room.matchId).catch(() => {
+          lastPing = 0; // network hiccup: try again on the next tick
+        });
+      }
+    };
+    this.#aliveTimer = setInterval(tick, 2000);
+    tick();
+  }
+
+  #stopAliveTimer() {
     clearInterval(this.#aliveTimer);
-    this.#aliveTimer = setInterval(() => {
-      if (this.room.status === RoomStatus.PLAYING) this.#saveSession();
-      else clearInterval(this.#aliveTimer);
-    }, 2000);
+    this.#aliveTimer = null;
   }
 
   #stopMatchTimers() {
     clearTimeout(this.#clockTimer);
-    clearInterval(this.#aliveTimer);
+    this.#stopAliveTimer();
     this.#endGrace();
   }
 
@@ -953,6 +975,9 @@ export class RoomController extends EventEmitter {
       });
       this.#setRatingChange({ matchId, status: 'done', rating: result.ratings[me], delta: result.deltas[me] });
       this.emit('rated');
+    } else if (result?.status === 'opponent_active') {
+      // Our claim that they left was refused: the server still heard from them. No result.
+      this.#setRatingChange({ matchId, status: 'disputed' });
     } else if (result?.status === 'cancelled') {
       this.#setRatingChange({ matchId, status: 'cancelled' });
     } else {

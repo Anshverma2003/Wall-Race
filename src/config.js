@@ -16,10 +16,14 @@ export const TIME_CONTROLS = Object.freeze([1, 3, 5, 10]);
  *                        pauses meanwhile); after that they lose.
  *  EARLY_LEAVE_MS      – leaving within this time of the start, before making a move,
  *                        cancels the game with no rating change.
+ *  HEARTBEAT_MS        – during a game each browser tells the server "still here" this
+ *                        often. The server only accepts a forfeit claimed against a
+ *                        player who has been silent for 45 s (see migration 003).
  */
 export const MATCH_RULES = Object.freeze({
   DISCONNECT_GRACE_MS: 60_000,
   EARLY_LEAVE_MS: 10_000,
+  HEARTBEAT_MS: 15_000,
 });
 
 export const DEFAULT_SETTINGS = Object.freeze({

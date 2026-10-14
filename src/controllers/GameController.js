@@ -406,6 +406,8 @@ function ratingNote(change) {
         tone: change.delta > 0 ? 'up' : change.delta < 0 ? 'down' : 'muted',
       };
     }
+    case 'disputed':
+      return { text: "Your opponent was still online, so this game doesn't count – no rating change.", tone: 'muted' };
     case 'cancelled':
       return { text: 'Game cancelled – no rating change.', tone: 'muted' };
     default:
