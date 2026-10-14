@@ -1,5 +1,9 @@
 import { EventEmitter } from '../core/EventEmitter.js';
+import { formatClock } from '../models/ClockModel.js';
 import { BoardView } from './BoardView.js';
+
+/** Clocks turn red below this much time. */
+const LOW_TIME_MS = 20_000;
 
 /**
  * Game screen: player HUD, status line, banner, board, history buttons and footer.
@@ -51,6 +55,8 @@ export class GameView extends EventEmitter {
    *   history: {canBack:boolean, canForward:boolean},
    *   footer: {label:string, value:string},
    *   names: string[],
+   *   ratings?: (number|null)[],
+   *   clock?: import('../models/ClockModel.js').ClockModel|null,
    *   thinking: boolean[],
    *   status: {text:string, tone?:string},
    *   hint: string,
@@ -63,6 +69,9 @@ export class GameView extends EventEmitter {
 
     this.chips.forEach((chip, i) => {
       chip.querySelector('.player-chip__name').textContent = state.names[i];
+      const rating = chip.querySelector('.player-chip__rating');
+      rating.hidden = !state.ratings?.[i];
+      rating.textContent = state.ratings?.[i] ? String(state.ratings[i]) : '';
       const left = game.wallsLeft[i];
       chip.querySelector('.player-chip__walls b').textContent = left === null ? '∞' : String(left);
       chip.dataset.active = String(!game.isOver && game.turn === i);
@@ -76,8 +85,8 @@ export class GameView extends EventEmitter {
     this.footerLabel.textContent = state.footer.label;
     this.footerValue.textContent = state.footer.value;
 
-    this.banner.hidden = !state.banner;
-    this.banner.textContent = state.banner ?? '';
+    this.setBanner(state.banner);
+    this.renderClocks(state.clock);
 
     this.navButtons.first.disabled = !state.history.canBack;
     this.navButtons.prev.disabled = !state.history.canBack;
@@ -93,5 +102,29 @@ export class GameView extends EventEmitter {
 
   setHint(text) {
     this.hint.textContent = text;
+  }
+
+  setBanner(text) {
+    this.banner.hidden = !text;
+    this.banner.textContent = text ?? '';
+  }
+
+  /**
+   * Chess clocks in the player chips (hidden when the game has no clock).
+   * Cheap enough to call several times a second.
+   * @param {import('../models/ClockModel.js').ClockModel|null} clock
+   */
+  renderClocks(clock) {
+    this.chips.forEach((chip, i) => {
+      const el = chip.querySelector('.player-chip__clock');
+      el.hidden = !clock;
+      if (!clock) return;
+      const left = clock.left(i);
+      const text = formatClock(left);
+      if (el.textContent !== text) el.textContent = text;
+      el.dataset.running = String(clock.running === i);
+      el.dataset.low = String(left <= LOW_TIME_MS);
+      el.setAttribute('aria-label', `${text} left`);
+    });
   }
 }

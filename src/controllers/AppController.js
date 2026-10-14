@@ -128,7 +128,7 @@ export class AppController {
     this.roomCtrl.on('rated', () => this.profileCtrl.refresh());
     this.aiCtrl.on('change', () => this.settingsCtrl.refresh());
     this.settings.on('change', (keys) => {
-      if (keys.includes('gridSize') || keys.includes('wallLimit')) this.roomCtrl.onMatchSettingsChanged();
+      if (keys.includes('gridSize') || keys.includes('wallLimit') || keys.includes('timeMinutes')) this.roomCtrl.onMatchSettingsChanged();
       if (keys.includes('flipBoard')) this.gameCtrl.refresh();
     });
 

@@ -1,5 +1,6 @@
 import { EventEmitter } from '../core/EventEmitter.js';
-import { NETWORK, ROOM, STORAGE_KEYS } from '../config.js';
+import { MATCH_RULES, NETWORK, ROOM, STORAGE_KEYS } from '../config.js';
+import { ClockModel } from '../models/ClockModel.js';
 import { GameModel } from '../models/GameModel.js';
 import { RoomStatus, sanitizeCard } from '../models/RoomModel.js';
 import { PeerService } from '../services/PeerService.js';
@@ -16,12 +17,20 @@ import { generateId, generateRoomCode, generateUuid, isValidRoomCode, randomInt 
  *    leave   {}                   leaving the room on purpose
  *
  *  host → guest
- *    sync    { room, game, event }  full authoritative state (+ what just happened)
+ *    sync    { room, game, clock, event }  full authoritative state (+ what just happened)
  *    reject  { reason }             cannot join (room full)
  *    leave   {}                     host closed the room
  *
- * The host is authoritative: it runs the GameModel, validates every action and
- * broadcasts the full state after each change. The guest only renders it.
+ * The host is authoritative: it runs the GameModel and the chess clock,
+ * validates every action and broadcasts the full state after each change.
+ * The guest only renders it.
+ *
+ * Leaving a game in progress (MATCH_RULES):
+ *  - Leave button: immediate loss for the leaver.
+ *  - Disconnect: the game pauses; the player has DISCONNECT_GRACE_MS to come
+ *    back, otherwise they lose.
+ *  - Either way, if the leaver had not moved yet and the game is less than
+ *    EARLY_LEAVE_MS old, the game is cancelled instead (no rating change).
  *
  * Emits 'change' whenever room or game state changes (used by other controllers).
  */
@@ -34,12 +43,27 @@ export class RoomController extends EventEmitter {
   #guestConnId = null;
   #hostConnId = null;
   #busy = false;
+  /** Bumped whenever a new connection is started (create / join / resume). */
+  #netGeneration = 0;
   #welcomeTimer = null;
   #gameController = null;
   /** Verified public cards (name, tag, rating) by player id. */
   #cards = new Map();
   /** Match ids already reported from this tab. */
   #reported = new Set();
+
+  /** @type {ClockModel|null} chess clock of the current game (host: authoritative, guest: mirror) */
+  clock = null;
+  /** Rating result of the last finished game, shown in the game-over card. */
+  ratingChange = null;
+  #clockTimer = null;
+  #aliveTimer = null;
+  /** Local time the current game started (for the early-leave rule). */
+  #startedAt = 0;
+  /** Profile ids of P1 and P2 for the current game (kept even if a seat empties). */
+  #matchPlayers = null;
+  /** Disconnect countdown: {player, deadline, early, timer} while waiting for someone to come back. */
+  #grace = null;
 
   /**
    * @param {{
@@ -87,7 +111,10 @@ export class RoomController extends EventEmitter {
     });
 
     // A refresh must not count as "leaving": just drop the connection and keep the session.
-    window.addEventListener('pagehide', () => this.network.destroy());
+    window.addEventListener('pagehide', () => {
+      this.#saveSession(); // remembers when we left (a host back within the grace period continues)
+      this.network.destroy();
+    });
     // Restored from the back/forward cache: the old connection is gone, start fresh.
     window.addEventListener('pageshow', (e) => {
       if (e.persisted) location.reload();
@@ -127,12 +154,33 @@ export class RoomController extends EventEmitter {
   get opponentThinking() { return false; }
   get rematchVotes() { return this.room.rematch; }
   get rematchNeedsBoth() { return true; }
-  get leaveWarning() { return 'The current game will end for both players.'; }
   get footer() { return { label: 'Room', value: this.room.code ?? '' }; }
   get canEditMatch() { return this.room.isHost && this.room.status !== RoomStatus.PLAYING; }
   get matchSettings() { return this.room.settings; }
 
+  get leaveWarning() {
+    if (this.room.status === RoomStatus.PLAYING && this.game && this.#isEarly(this.room.localIndex)) {
+      return "You haven't moved yet, so leaving now cancels the game with no rating change.";
+    }
+    return 'Leaving now counts as a loss, and your opponent wins the rating points.';
+  }
+
+  /** Ratings shown next to the names: [P1, P2] (null when unknown). */
+  get ratings() {
+    return this.room.seats.map((seat, i) => {
+      const card = this.#verifiedCard(seat.card);
+      if (card?.rating) return card.rating;
+      return i === this.room.localIndex ? this.player.rating : null;
+    });
+  }
+
   get banner() {
+    if (this.#grace && this.room.status === RoomStatus.PLAYING) {
+      const secs = Math.max(0, Math.ceil((this.#grace.deadline - Date.now()) / 1000));
+      return this.room.isHost
+        ? `Your opponent disconnected. The game is paused – waiting ${secs}s for them to come back.`
+        : `Lost connection to the host. The game is paused – waiting ${secs}s for them to come back.`;
+    }
     if (this.reconnecting) return 'Connection to the host lost. Reconnecting…';
     if (this.room.isActive && !this.room.opponentConnected) {
       return this.room.isHost
@@ -232,13 +280,29 @@ export class RoomController extends EventEmitter {
 
   /** Leave the room on purpose. The other player is told. */
   leave() {
+    // Leaving a game in progress is a loss (unless it's an early leave, which cancels the game).
+    if (this.room.status === RoomStatus.PLAYING && this.game && !this.game.isOver) {
+      const me = this.room.localIndex;
+      if (!this.#isEarly(me)) {
+        const lost = GameModel.fromJSON(this.game.toJSON());
+        lost.endGame(1 - me, 'forfeit');
+        this.#sendReport(lost);
+        this.toast.show('You left the game. It counts as a loss.', 'warning', 4000);
+      } else {
+        this.toast.show('Game cancelled. No rating change.', 'info');
+      }
+    }
+    this.#stopMatchTimers();
+
     const target = this.room.isHost ? this.#guestConnId : this.#hostConnId;
     if (target) this.network.send(target, { t: 'leave' });
 
-    // Give the message a moment to flush before closing the channel.
+    // Give the message a moment to flush before closing the channel – unless a new
+    // room was created / joined in the meantime (that reuses the network).
     const network = this.network;
+    const generation = this.#netGeneration;
     setTimeout(() => {
-      if (!this.room.isActive) network.destroy();
+      if (!this.room.isActive && generation === this.#netGeneration) network.destroy();
     }, 250);
 
     this.#resetLocal();
@@ -263,6 +327,10 @@ export class RoomController extends EventEmitter {
     this.room.status = RoomStatus.PLAYING;
     this.room.rematch = [false, false];
     this.room.matchId = generateUuid();
+    this.clock = new ClockModel({ limitMs: this.room.settings.timeMinutes * 60_000 });
+    this.clock.run(first);
+    this.#onMatchStarted();
+    this.#scheduleTimeout();
     this.#broadcast({ kind: 'start', first });
   }
 
@@ -296,6 +364,12 @@ export class RoomController extends EventEmitter {
   #applyAction(player, action) {
     if (!this.game || this.room.status !== RoomStatus.PLAYING) return;
 
+    // A move that arrives after the flag fell loses on time instead.
+    if (this.clock && this.clock.running === player && this.clock.left(player) <= 0) {
+      this.#onTimeout();
+      return;
+    }
+
     let result;
     if (!this.room.seats[1].connected) {
       result = { ok: false, reason: 'Waiting for your opponent to reconnect.' };
@@ -313,8 +387,30 @@ export class RoomController extends EventEmitter {
     if (this.game.isOver) {
       this.room.status = RoomStatus.FINISHED;
       this.room.rematch = [false, false];
+      this.clock?.stop();
+    } else {
+      this.clock?.run(this.game.turn);
     }
+    this.#scheduleTimeout();
     this.#broadcast({ kind: 'action', by: player, action: this.game.lastAction });
+  }
+
+  // ------------------------------------------------------------ chess clock (host)
+
+  #scheduleTimeout() {
+    clearTimeout(this.#clockTimer);
+    if (!this.room.isHost || !this.clock?.isRunning || this.room.status !== RoomStatus.PLAYING) return;
+    this.#clockTimer = setTimeout(() => {
+      if (this.clock?.isRunning && this.clock.msToTimeout <= 0) this.#onTimeout();
+      else this.#scheduleTimeout();
+    }, this.clock.msToTimeout + 25);
+  }
+
+  /** The player to move ran out of time: they lose. */
+  #onTimeout() {
+    if (!this.game || this.game.isOver || !this.clock || this.clock.running === null) return;
+    const loser = this.clock.running;
+    this.#endMatch(1 - loser, 'timeout');
   }
 
   #voteRematch(player) {
@@ -341,8 +437,21 @@ export class RoomController extends EventEmitter {
     }
 
     const returning = seat.playerId === playerId && this.room.status !== RoomStatus.LOBBY;
+    if (!returning && this.room.status === RoomStatus.FINISHED) {
+      // A new opponent after the last one left: start over in the lobby.
+      this.room.status = RoomStatus.LOBBY;
+      this.game = null;
+      this.clock = null;
+    }
     this.room.seats[1] = { playerId, connected: true, card: sanitizeCard(card) };
     this.#guestConnId = connId;
+
+    // Back within the grace period: the paused game continues.
+    if (returning && this.room.status === RoomStatus.PLAYING) {
+      this.#endGrace();
+      this.clock?.run(this.game.turn);
+      this.#scheduleTimeout();
+    }
 
     this.toast.show(returning ? 'Your opponent reconnected.' : 'Player 2 joined the room.', 'success');
     this.#broadcast(null);
@@ -351,6 +460,24 @@ export class RoomController extends EventEmitter {
   #onGuestLeft(explicit) {
     this.#guestConnId = null;
     const inMatch = this.room.status !== RoomStatus.LOBBY;
+
+    if (this.room.status === RoomStatus.PLAYING) {
+      if (explicit) {
+        // Left on purpose: immediate loss, or a cancelled game if it was an early leave.
+        this.room.seats[1] = { ...this.room.seats[1], playerId: null, connected: false };
+        if (this.#isEarly(1)) this.#cancelMatch('Your opponent left before moving. Game cancelled – no rating change.');
+        else this.#endMatch(0, 'forfeit');
+      } else {
+        // Dropped: pause and give them time to come back.
+        this.room.seats[1].connected = false;
+        this.clock?.stop();
+        clearTimeout(this.#clockTimer);
+        this.#beginGrace(1);
+        this.toast.show('Your opponent disconnected. The game is paused.', 'warning');
+        this.#broadcast(null);
+      }
+      return;
+    }
 
     if (explicit || !inMatch) {
       this.room.freeGuestSeat();
@@ -378,6 +505,7 @@ export class RoomController extends EventEmitter {
       t: 'sync',
       room: this.room.snapshot(),
       game: this.game ? this.game.toJSON() : null,
+      clock: this.clock ? this.clock.snapshot() : null,
       event,
     });
   }
@@ -405,13 +533,28 @@ export class RoomController extends EventEmitter {
       this.room.seats[0] = { playerId: this.playerId, connected: true, card: this.player.card };
       this.room.seats[1].connected = false;
       this.game = session.game ? GameModel.fromJSON(session.game) : null;
+      // The clock stays paused until the guest is back.
+      this.clock = session.clock ? ClockModel.fromSnapshot(session.clock, { paused: true }) : null;
       if (this.room.status === RoomStatus.LOBBY || !this.game) {
         this.room.status = RoomStatus.LOBBY;
         this.room.freeGuestSeat();
         this.game = null;
+        this.clock = null;
       }
+      this.#matchPlayers = session.matchPlayers ?? null;
 
       this.homeView.setMessage('');
+      if (this.room.status === RoomStatus.PLAYING) {
+        const away = Date.now() - (session.aliveAt ?? session.savedAt);
+        if (away > MATCH_RULES.DISCONNECT_GRACE_MS) {
+          // We were gone longer than the grace period: the guest has already been given the win.
+          this.#endMatch(1, 'forfeit');
+          this.toast.show('You were away too long, so the game was lost.', 'warning', 5000);
+          return;
+        }
+        this.#beginGrace(1);
+        this.#startAliveTimer(); // "still here" pings resume right away
+      }
       this.#changed();
       this.#route(null);
       this.toast.show(`Room ${session.code} reopened.`, 'success');
@@ -432,8 +575,13 @@ export class RoomController extends EventEmitter {
       case 'sync': {
         clearTimeout(this.#welcomeTimer);
         this.reconnecting = false;
+        this.#endGrace();
         this.room.applySnapshot(msg.room);
         this.game = msg.game ? GameModel.fromJSON(msg.game) : null;
+        this.clock = this.game ? ClockModel.fromSnapshot(msg.clock) : null;
+        if (msg.event?.kind === 'start') this.#onMatchStarted();
+        else if (this.room.status === RoomStatus.PLAYING && !this.#matchPlayers) this.#matchPlayers = this.#seatPlayers();
+        if (this.room.status === RoomStatus.PLAYING) this.#startAliveTimer();
         this.homeView.setMessage('');
         this.#changed();
         this.#route(msg.event ?? null);
@@ -444,6 +592,17 @@ export class RoomController extends EventEmitter {
         this.#abortToHome(msg.reason || 'Could not join the room.', { keepSession: false });
         break;
       case 'leave':
+        if (this.room.status === RoomStatus.PLAYING && this.game && !this.game.isOver) {
+          // The host left mid-game: we win, unless it was an early leave.
+          this.#hostConnId = null;
+          this.network.destroy();
+          if (this.#isEarly(0)) {
+            this.#abortToHome('The host left before moving. Game cancelled – no rating change.', { keepSession: false });
+          } else {
+            this.#winAfterHostLeft();
+          }
+          break;
+        }
         this.#abortToHome('', { keepSession: false });
         this.modal.show({
           id: 'room-closed',
@@ -461,14 +620,21 @@ export class RoomController extends EventEmitter {
     this.#hostConnId = null;
     if (this.reconnecting) return;
     this.reconnecting = true;
+    const inGame = this.room.status === RoomStatus.PLAYING && this.game && !this.game.isOver;
+    if (inGame) {
+      // Pause the game and wait up to the grace period for the host.
+      this.clock?.stop();
+      this.#beginGrace(0);
+    }
     this.toast.show('Connection to the host lost. Reconnecting…', 'warning');
     this.#changed();
     this.#route(null);
 
     const code = this.room.code;
-    for (let attempt = 0; attempt < NETWORK.RECONNECT_ATTEMPTS; attempt++) {
+    const deadline = inGame ? this.#grace.deadline : Infinity;
+    for (let attempt = 0; inGame ? Date.now() < deadline : attempt < NETWORK.RECONNECT_ATTEMPTS; attempt++) {
       await delay(NETWORK.RECONNECT_DELAY_MS);
-      if (!this.room.isActive || this.room.code !== code) return; // user left meanwhile
+      if (!this.room.isActive || this.room.code !== code || !this.reconnecting) return; // left, or the game ended meanwhile
       try {
         this.#hostConnId = await this.network.join(code);
         this.network.send(this.#hostConnId, this.#hello());
@@ -478,7 +644,8 @@ export class RoomController extends EventEmitter {
       }
     }
 
-    if (this.room.isActive && this.room.code === code) {
+    // In a game the grace timer decides the outcome (see #onGraceExpired).
+    if (!inGame && this.room.isActive && this.room.code === code) {
       this.#abortToHome('Lost connection to the host. You can try to rejoin.', { keepSession: true });
     }
   }
@@ -564,6 +731,10 @@ export class RoomController extends EventEmitter {
     clearTimeout(this.#welcomeTimer);
     this.room.reset();
     this.game = null;
+    this.clock = null;
+    this.ratingChange = null;
+    this.#matchPlayers = null;
+    this.#stopMatchTimers();
     this.reconnecting = false;
     this.#guestConnId = null;
     this.#hostConnId = null;
@@ -584,6 +755,7 @@ export class RoomController extends EventEmitter {
       return false;
     }
     this.#busy = true;
+    this.#netGeneration++;
     this.homeView.setBusy(label);
     return true;
   }
@@ -630,26 +802,194 @@ export class RoomController extends EventEmitter {
     }
   }
 
+  // ====================================================== match lifecycle
+
+  #seatPlayers() {
+    const ids = this.room.seats.map((s) => s.card?.id ?? null);
+    return ids.every(Boolean) && ids[0] !== ids[1] ? ids : null;
+  }
+
+  /** Both sides: a new game has started. */
+  #onMatchStarted() {
+    this.#startedAt = performance.now();
+    this.#matchPlayers = this.#seatPlayers();
+    this.ratingChange = null;
+    this.#endGrace();
+    this.#startAliveTimer();
+    // Tell the server the game exists, so a later forfeit can be checked against it.
+    if (this.#matchPlayers && this.player.exists) {
+      this.results.registerStart({ matchId: this.room.matchId, players: this.#matchPlayers });
+    }
+  }
+
   /**
-   * When a game finishes, each player's browser reports it. It reaches the
-   * leaderboard only after the server replays it and both reports agree.
+   * Early leave: the player hasn't moved yet and the game is less than
+   * EARLY_LEAVE_MS old. Leaving then cancels the game instead of losing it.
+   */
+  #isEarly(player) {
+    if (!this.game || !this.#startedAt) return false;
+    return this.game.actionsBy(player) === 0 && performance.now() - this.#startedAt < MATCH_RULES.EARLY_LEAVE_MS;
+  }
+
+  /** End the current game without reaching the goal (timeout / forfeit). Works on host and guest. */
+  #endMatch(winner, reason) {
+    if (!this.game || this.game.isOver) return;
+    this.game.endGame(winner, reason);
+    this.clock?.stop();
+    this.#stopMatchTimers();
+    this.reconnecting = false;
+    this.room.status = RoomStatus.FINISHED;
+    this.room.rematch = [false, false];
+    this.#broadcast({ kind: 'end', reason, winner });
+  }
+
+  /** Early leave: drop the game, nobody's rating changes. Host only (the guest goes home). */
+  #cancelMatch(message) {
+    this.#stopMatchTimers();
+    this.game = null;
+    this.clock = null;
+    this.room.freeGuestSeat();
+    this.room.status = RoomStatus.LOBBY;
+    this.toast.show(message, 'info', 5000);
+    this.#broadcast(null);
+  }
+
+  #beginGrace(player) {
+    this.#endGrace();
+    const early = this.#isEarly(player);
+    const deadline = Date.now() + MATCH_RULES.DISCONNECT_GRACE_MS;
+    const timer = setTimeout(() => this.#onGraceExpired(), MATCH_RULES.DISCONNECT_GRACE_MS);
+    this.#grace = { player, deadline, early, timer };
+  }
+
+  #endGrace() {
+    if (this.#grace) clearTimeout(this.#grace.timer);
+    this.#grace = null;
+  }
+
+  /** The disconnected player did not come back in time. */
+  #onGraceExpired() {
+    const grace = this.#grace;
+    this.#grace = null;
+    if (!grace || this.room.status !== RoomStatus.PLAYING || !this.game || this.game.isOver) return;
+
+    if (this.room.isHost) {
+      if (grace.early) this.#cancelMatch("Your opponent didn't come back. Game cancelled – no rating change.");
+      else {
+        this.room.seats[1] = { ...this.room.seats[1], playerId: null, connected: false };
+        this.#endMatch(0, 'forfeit');
+      }
+      return;
+    }
+
+    // Guest: the host never came back.
+    this.network.destroy();
+    this.#hostConnId = null;
+    if (grace.early) {
+      this.#abortToHome("The host didn't come back. Game cancelled – no rating change.", { keepSession: false });
+    } else {
+      this.#winAfterHostLeft();
+    }
+  }
+
+  /** Guest: the host left or never came back – we win by forfeit. The room is gone afterwards. */
+  #winAfterHostLeft() {
+    this.room.seats[0] = { ...this.room.seats[0], connected: false };
+    this.#endMatch(this.room.localIndex, 'forfeit');
+    this.#clearSession();
+  }
+
+  /**
+   * While a game is on:
+   *  - refresh the saved session regularly (clock + "still here" time for a host restart), and
+   *  - tell the server we are still in the game, so nobody can falsely claim we left.
+   */
+  #startAliveTimer() {
+    if (this.#aliveTimer) return; // already running (called on every sync)
+    let lastPing = 0;
+    const tick = () => {
+      if (this.room.status !== RoomStatus.PLAYING) {
+        this.#stopAliveTimer();
+        return;
+      }
+      this.#saveSession();
+      if (Date.now() - lastPing >= MATCH_RULES.HEARTBEAT_MS && this.room.matchId && this.player.code) {
+        lastPing = Date.now();
+        this.supabase.matchHeartbeat(this.player.code, this.room.matchId).catch(() => {
+          lastPing = 0; // network hiccup: try again on the next tick
+        });
+      }
+    };
+    this.#aliveTimer = setInterval(tick, 2000);
+    tick();
+  }
+
+  #stopAliveTimer() {
+    clearInterval(this.#aliveTimer);
+    this.#aliveTimer = null;
+  }
+
+  #stopMatchTimers() {
+    clearTimeout(this.#clockTimer);
+    this.#stopAliveTimer();
+    this.#endGrace();
+  }
+
+  // ====================================================== results
+
+  /**
+   * When a game finishes, each player's browser reports it to the server,
+   * which replays it before touching ratings. Games won on the board or on
+   * time count when both reports agree; a forfeit counts on one report.
+   * The outcome is shown in the game-over card (ratingChange).
    */
   async #reportResult() {
     const { room, game } = this;
     if (room.status !== RoomStatus.FINISHED || !game?.isOver || !room.matchId) return;
     if (this.#reported.has(room.matchId)) return;
-    const players = room.seats.map((s) => s.card?.id);
-    if (!players.every(Boolean) || players[0] === players[1] || !this.player.exists) return;
+    if (!(this.#matchPlayers ?? this.#seatPlayers()) || !this.player.exists) return;
+    await this.#sendReport(game, { showResult: true });
+  }
 
-    this.#reported.add(room.matchId);
-    const me = room.localIndex;
-    const result = await this.results.reportOnline({ matchId: room.matchId, players, game: game.toJSON() });
+  async #sendReport(game, { showResult = false } = {}) {
+    const matchId = this.room.matchId;
+    const players = this.#matchPlayers ?? this.#seatPlayers();
+    if (!matchId || !players || !this.player.exists || this.#reported.has(matchId)) return;
+    this.#reported.add(matchId);
+
+    const me = this.room.localIndex;
+    if (showResult) this.#setRatingChange({ matchId, status: 'pending' });
+    const result = await this.results.reportOnline({
+      matchId,
+      players,
+      game: game.toJSON(),
+      result: { reason: game.endReason, winner: game.winner },
+    });
+    if (!showResult) return;
+
     if (result?.status === 'recorded' && Array.isArray(result.deltas)) {
-      const delta = result.deltas[me];
-      this.toast.show(`Rating ${result.ratings[me]} (${delta >= 0 ? '+' : ''}${delta})`, delta >= 0 ? 'success' : 'info', 4500);
-      this.#cards.clear(); // ratings changed
+      // The server returns both new ratings: show them in the chips / lobby straight away.
+      players.forEach((id, i) => {
+        const known = this.#cards.get(id) ?? this.room.seats[i]?.card ?? { id };
+        this.#cards.set(id, { ...known, rating: result.ratings[i] });
+      });
+      this.#setRatingChange({ matchId, status: 'done', rating: result.ratings[me], delta: result.deltas[me] });
       this.emit('rated');
+    } else if (result?.status === 'opponent_active') {
+      // Our claim that they left was refused: the server still heard from them. No result.
+      this.#setRatingChange({ matchId, status: 'disputed' });
+    } else if (result?.status === 'cancelled') {
+      this.#setRatingChange({ matchId, status: 'cancelled' });
+    } else {
+      this.#setRatingChange({ matchId, status: 'none' });
     }
+  }
+
+  #setRatingChange(change) {
+    if (change.matchId !== this.room.matchId) return; // a newer game already started
+    this.ratingChange = change;
+    this.emit('change');
+    this.#gameController?.refresh();
   }
 
   // ====================================================== session storage
@@ -660,6 +1000,9 @@ export class RoomController extends EventEmitter {
     if (this.room.isHost) {
       data.room = this.room.toJSON();
       data.game = this.game ? this.game.toJSON() : null;
+      data.clock = this.clock ? this.clock.snapshot() : null;
+      data.matchPlayers = this.#matchPlayers;
+      data.aliveAt = data.savedAt;
     }
     this.storage.set(STORAGE_KEYS.SESSION, data);
   }

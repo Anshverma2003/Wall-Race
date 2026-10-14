@@ -672,3 +672,96 @@
     padding: 10px 10px;
   }
 }
+
+/* ---------- Player chips: rating + chess clock ---------- */
+.player-chip__name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.player-chip--right .player-chip__name-row {
+  justify-content: flex-end;
+}
+
+.player-chip__rating {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-chip__clock {
+  flex-shrink: 0;
+  min-width: 4.2ch;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.player-chip__clock[data-running="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--success) 18%, var(--bg-sunken));
+}
+
+.player-chip__clock[data-low="true"] {
+  color: var(--danger);
+}
+
+.player-chip__clock[data-low="true"][data-running="true"] {
+  background: color-mix(in srgb, var(--danger) 18%, var(--bg-sunken));
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@media (max-width: 520px) {
+  .player-chip__clock {
+    font-size: 0.9rem;
+    padding: 3px 6px;
+  }
+
+  .player-chip__rating {
+    font-size: 0.68rem;
+  }
+}
+
+/* Phones: two-line chips so names stay readable next to the clock.
+   Line 1: name + rating. Line 2: walls + clock. */
+@media (max-width: 520px) {
+  .game__hud .player-chip {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      "pawn name name"
+      "pawn walls clock";
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: center;
+    border-radius: 18px;
+    width: 100%;
+  }
+
+  .game__hud .player-chip--right {
+    grid-template-columns: 1fr auto auto;
+    grid-template-areas:
+      "name name pawn"
+      "clock walls pawn";
+  }
+
+  .game__hud .player-chip__info { display: contents; }
+  .game__hud .player-chip__pawn { grid-area: pawn; }
+  .game__hud .player-chip__name-row { grid-area: name; }
+  .game__hud .player-chip__walls { grid-area: walls; }
+  .game__hud .player-chip__clock { grid-area: clock; justify-self: end; }
+  .game__hud .player-chip--right .player-chip__clock { justify-self: start; }
+}

@@ -1,5 +1,5 @@
 import { EventEmitter } from '../core/EventEmitter.js';
-import { DEFAULT_SETTINGS, GRID_SIZES, WALL_LIMIT } from '../config.js';
+import { DEFAULT_SETTINGS, GRID_SIZES, TIME_CONTROLS, WALL_LIMIT } from '../config.js';
 
 /**
  * Settings dialog. Changes are emitted immediately (no "save" button).
@@ -20,6 +20,8 @@ export class SettingsView extends EventEmitter {
     this.walls = document.getElementById('setting-walls');
     this.unlimited = document.getElementById('setting-walls-unlimited');
     this.note = document.getElementById('setting-game-note');
+    this.time = document.getElementById('setting-time');
+    this.timeField = document.getElementById('setting-time-field');
 
     this.walls.min = String(WALL_LIMIT.MIN);
     this.walls.max = String(WALL_LIMIT.MAX);
@@ -31,6 +33,17 @@ export class SettingsView extends EventEmitter {
         btn.setAttribute('role', 'radio');
         btn.dataset.value = String(size);
         btn.textContent = `${size} × ${size}`;
+        return btn;
+      }),
+    );
+
+    this.time.replaceChildren(
+      ...TIME_CONTROLS.map((minutes) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('role', 'radio');
+        btn.dataset.value = String(minutes);
+        btn.textContent = `${minutes} min`;
         return btn;
       }),
     );
@@ -56,13 +69,15 @@ export class SettingsView extends EventEmitter {
   }
 
   /**
-   * @param {{theme:string, flipBoard:boolean, gridSize:number, wallLimit:number|null}} values
-   * @param {{gameEditable:boolean, note:string}} options
+   * @param {{theme:string, flipBoard:boolean, gridSize:number, wallLimit:number|null, timeMinutes:number}} values
+   * @param {{gameEditable:boolean, note:string, showTime:boolean}} options
    */
-  render(values, { gameEditable, note }) {
+  render(values, { gameEditable, note, showTime = true }) {
     setSegmented(this.theme, values.theme);
     this.flip.checked = values.flipBoard;
     setSegmented(this.grid, String(values.gridSize));
+    setSegmented(this.time, String(values.timeMinutes));
+    this.timeField.hidden = !showTime;
 
     const unlimited = values.wallLimit === null;
     if (!unlimited) this.#lastFiniteWalls = values.wallLimit;
@@ -96,6 +111,11 @@ export class SettingsView extends EventEmitter {
     this.grid.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-value]');
       if (btn && !this.gameGroup.disabled) this.emit('change', { gridSize: Number(btn.dataset.value) });
+    });
+
+    this.time.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-value]');
+      if (btn && !this.gameGroup.disabled) this.emit('change', { timeMinutes: Number(btn.dataset.value) });
     });
 
     this.walls.addEventListener('change', () => {

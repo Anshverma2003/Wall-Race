@@ -1,10 +1,11 @@
 import { EventEmitter } from '../core/EventEmitter.js';
-import { AI_LEVELS, DEFAULT_SETTINGS, GRID_SIZES, STORAGE_KEYS, WALL_LIMIT } from '../config.js';
+import { AI_LEVELS, DEFAULT_SETTINGS, GRID_SIZES, STORAGE_KEYS, TIME_CONTROLS, WALL_LIMIT } from '../config.js';
 
 /**
  * Local user preferences, persisted to localStorage.
  *  - theme / flipBoard:   personal, apply to any player.
  *  - gridSize / wallLimit: the match settings this user uses when hosting or playing vs AI.
+ *  - timeMinutes: chess clock per player when hosting (online games only).
  *  - aiDifficulty: last chosen AI level.
  *
  * Emits 'change' (changedKeys: string[], settings) whenever something changes.
@@ -27,6 +28,7 @@ export class SettingsModel extends EventEmitter {
     if (GRID_SIZES.includes(Number(raw.gridSize))) out.gridSize = Number(raw.gridSize);
     out.wallLimit = SettingsModel.sanitizeWallLimit(raw.wallLimit);
     if (Object.hasOwn(AI_LEVELS, raw.aiDifficulty)) out.aiDifficulty = raw.aiDifficulty;
+    out.timeMinutes = SettingsModel.sanitizeTime(raw.timeMinutes);
     return out;
   }
 
@@ -37,15 +39,22 @@ export class SettingsModel extends EventEmitter {
     return Math.min(WALL_LIMIT.MAX, Math.max(WALL_LIMIT.MIN, n));
   }
 
+  /** One of TIME_CONTROLS (minutes per player), default 3. */
+  static sanitizeTime(value) {
+    const n = Number(value);
+    return TIME_CONTROLS.includes(n) ? n : DEFAULT_SETTINGS.timeMinutes;
+  }
+
   get theme() { return this.#data.theme; }
   get flipBoard() { return this.#data.flipBoard; }
   get gridSize() { return this.#data.gridSize; }
   get wallLimit() { return this.#data.wallLimit; }
   get aiDifficulty() { return this.#data.aiDifficulty; }
+  get timeMinutes() { return this.#data.timeMinutes; }
 
   /** The subset shared with the opponent when hosting. */
   get matchSettings() {
-    return { gridSize: this.#data.gridSize, wallLimit: this.#data.wallLimit };
+    return { gridSize: this.#data.gridSize, wallLimit: this.#data.wallLimit, timeMinutes: this.#data.timeMinutes };
   }
 
   toJSON() {

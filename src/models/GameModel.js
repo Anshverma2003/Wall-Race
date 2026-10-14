@@ -51,6 +51,8 @@ export class GameModel {
     this.startingPlayer = startingPlayer;
     this.status = GameStatus.PLAYING;
     this.winner = null;
+    /** How the game ended: 'goal' (reached the far side), 'timeout' or 'forfeit' (left / disconnected). */
+    this.endReason = null;
     this.moveCount = 0;
     /** @type {null | {by:0|1, kind:'move'|'wall', r:number, c:number, o?:'h'|'v', jumped?:boolean}} */
     this.lastAction = null;
@@ -77,6 +79,7 @@ export class GameModel {
       startingPlayer: this.startingPlayer,
       status: this.status,
       winner: this.winner,
+      endReason: this.endReason,
       moveCount: this.moveCount,
       lastAction: this.lastAction ? { ...this.lastAction } : null,
       history: this.history.map((a) => ({ ...a })),
@@ -91,6 +94,7 @@ export class GameModel {
     game.turn = data.turn;
     game.status = data.status;
     game.winner = data.winner;
+    game.endReason = data.endReason ?? (data.status === GameStatus.FINISHED ? 'goal' : null);
     game.moveCount = data.moveCount;
     game.lastAction = data.lastAction ? { ...data.lastAction } : null;
     game.history = (data.history ?? []).map((a) => ({ ...a }));
@@ -240,7 +244,24 @@ export class GameModel {
     return { ok: true };
   }
 
+  /** How many actions (moves + walls) a player has made. */
+  actionsBy(player) {
+    return this.history.reduce((n, a) => n + (a.by === player ? 1 : 0), 0);
+  }
+
   // ---------------------------------------------------------------- mutation
+
+  /**
+   * Ends the game without anyone reaching the goal.
+   * @param {0|1} winner
+   * @param {'timeout'|'forfeit'} reason
+   */
+  endGame(winner, reason) {
+    if (this.isOver) return;
+    this.status = GameStatus.FINISHED;
+    this.winner = winner;
+    this.endReason = reason;
+  }
 
   /**
    * Applies a move or wall for a player, enforcing turn order and all rules.
@@ -264,6 +285,7 @@ export class GameModel {
       if (move.r === this.goalRow(player)) {
         this.status = GameStatus.FINISHED;
         this.winner = player;
+        this.endReason = 'goal';
       }
     } else if (action.kind === 'wall') {
       const wall = { o: action.o, r: action.r, c: action.c };

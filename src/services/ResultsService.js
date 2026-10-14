@@ -3,6 +3,9 @@ import { REPORT_ENDPOINT, STORAGE_KEYS } from '../config.js';
 const MAX_PENDING = 20;
 const WAITING_RETRIES = 4;
 const WAITING_DELAY_MS = 2500;
+// A forfeit claim against someone who pinged recently is re-checked for up to a minute.
+const ACTIVE_RETRY_EVERY_MS = 5000;
+const ACTIVE_RETRY_FOR_MS = 60_000;
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -29,14 +32,28 @@ export class ResultsService {
    * first we poll briefly until the opponent's report arrives.
    * @returns {Promise<object|null>} server result ({status, ratings, deltas}) or null
    */
-  async reportOnline({ matchId, players, game }) {
-    const body = { kind: 'online', matchId, players, game };
+  async reportOnline({ matchId, players, game, result: outcome }) {
+    const body = { kind: 'online', matchId, players, game, result: outcome };
+    const started = Date.now();
     let result = await this.#send(`online:${matchId}`, body);
-    for (let i = 0; result?.status === 'waiting' && i < WAITING_RETRIES; i++) {
-      await delay(WAITING_DELAY_MS);
+    for (let i = 0; ; i++) {
+      // 'waiting': the opponent's report hasn't arrived yet.
+      // 'opponent_active': a forfeit we claimed is on hold because the opponent still
+      //   pinged the server recently. If they really left, they go quiet and it counts.
+      if (result?.status === 'waiting' && i < WAITING_RETRIES) await delay(WAITING_DELAY_MS);
+      else if (result?.status === 'opponent_active' && Date.now() - started < ACTIVE_RETRY_FOR_MS) await delay(ACTIVE_RETRY_EVERY_MS);
+      else break;
       result = await this.#send(`online:${matchId}`, body, { retry: true });
     }
     return result;
+  }
+
+  /**
+   * An online game between these two players has started. The server needs
+   * both players' confirmation before it accepts a forfeit for this game.
+   */
+  registerStart({ matchId, players }) {
+    return this.#send(`start:${matchId}`, { kind: 'online-start', matchId, players });
   }
 
   /** Win against the Hard AI. */

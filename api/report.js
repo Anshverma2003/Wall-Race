@@ -2,16 +2,19 @@
  * POST /api/report – a player's browser reports a finished game.
  *
  * Headers:  Authorization: Bearer <recovery code>
- * Body:     { kind: 'online', matchId, players: [p0Id, p1Id], game }
+ * Body:     { kind: 'online-start', matchId, players: [p0Id, p1Id] }
+ *        or { kind: 'online', matchId, players: [p0Id, p1Id], game, result: { reason, winner } }
  *        or { kind: 'ai', gameId, difficulty: 'hard', seed, game }
  *           (`game` is GameModel.toJSON(), including the full move history)
  *
  * The game is replayed with the real rules (and, for AI games, the real AI)
- * before anything is written. Online games count only when both players'
- * browsers report the identical game.
+ * before anything is written. Online games won on the board or on time count
+ * only when both players' browsers report the identical game. A forfeit
+ * (left / disconnected) counts on one report, but only for a game both
+ * players confirmed starting ('online-start').
  */
 import { playerIdForSecretHash, rpc } from './_lib/db.js';
-import { secretHash, sha256Hex, verifyAiWin, verifyOnline, VerifyError } from './_lib/verify.js';
+import { secretHash, sha256Hex, verifyAiWin, verifyOnline, verifyOnlineStart, VerifyError } from './_lib/verify.js';
 
 export const maxDuration = 30;
 
@@ -40,6 +43,18 @@ export async function POST(request) {
     const playerId = await playerIdForSecretHash(await secretHash(code));
     if (!playerId) return json(401, { error: 'Unknown player.' });
 
+    if (body?.kind === 'online-start') {
+      const start = verifyOnlineStart(body);
+      if (!start.players.includes(playerId)) return json(403, { error: 'You are not in this game.' });
+      const result = await rpc('register_online_start', {
+        p_match_id: start.matchId,
+        p_reporter: playerId,
+        p_p0: start.players[0],
+        p_p1: start.players[1],
+      });
+      return json(200, result);
+    }
+
     if (body?.kind === 'online') {
       const report = verifyOnline(body);
       if (!report.players.includes(playerId)) return json(403, { error: 'You did not play in this game.' });
@@ -52,6 +67,8 @@ export async function POST(request) {
         p_winner: report.winner,
         p_moves: report.moves,
         p_grid: report.grid,
+        p_reason: report.reason,
+        p_loser_moves: report.loserMoves,
       });
       return json(200, result);
     }
