@@ -399,10 +399,14 @@ function ratingNote(change) {
   switch (change.status) {
     case 'pending':
       return { text: 'Updating rating…', tone: 'muted' };
+    // 'preview': calculated in the browser the moment the game ended, until the server answers.
+    // 'done': the server's official result – it wins if the two ever differ.
+    case 'preview':
     case 'done': {
       const sign = change.delta > 0 ? '+' : change.delta < 0 ? '−' : '±';
+      const suffix = change.status === 'preview' ? ' · confirming…' : ' ✓';
       return {
-        text: `Rating ${change.rating} (${sign}${Math.abs(change.delta)})`,
+        text: `Rating ${change.rating} (${sign}${Math.abs(change.delta)})${suffix}`,
         tone: change.delta > 0 ? 'up' : change.delta < 0 ? 'down' : 'muted',
       };
     }
