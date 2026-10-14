@@ -53,6 +53,9 @@ export class RoomController extends EventEmitter {
   #cards = new Map();
   /** Match ids already reported from this tab. */
   #reported = new Set();
+  /** Emoji reactions: when we last sent / received one (cooldown + anti-flood). */
+  #lastEmojiSent = 0;
+  #lastEmojiReceived = 0;
 
   /** @type {ClockModel|null} chess clock of the current game (host: authoritative, guest: mirror) */
   clock = null;
@@ -66,8 +69,6 @@ export class RoomController extends EventEmitter {
   #matchPlayers = null;
   /** Disconnect countdown: {player, deadline, early, timer} while waiting for someone to come back. */
   #grace = null;
-  #lastEmojiSent = 0;
-  #lastEmojiReceived = 0;
 
   /**
    * @param {{
