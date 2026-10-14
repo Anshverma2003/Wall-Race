@@ -765,3 +765,135 @@
   .game__hud .player-chip__clock { grid-area: clock; justify-self: end; }
   .game__hud .player-chip--right .player-chip__clock { justify-self: start; }
 }
+
+/* ---------- Emoji reactions (online games) ---------- */
+.player-chip {
+  position: relative;
+}
+
+/* Bubble above the sender's name, shown for ~3 s */
+.player-chip__emoji {
+  position: absolute;
+  top: -18px;
+  left: 18px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 1.35rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.player-chip--right .player-chip__emoji {
+  left: auto;
+  right: 18px;
+}
+
+.player-chip__emoji--pop {
+  animation: emoji-pop 0.35s var(--ease);
+}
+
+@keyframes emoji-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.emoji-menu {
+  position: relative;
+}
+
+.emoji-menu__toggle {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.emoji-menu__toggle:disabled {
+  opacity: 0.45;
+}
+
+/* Picker opens upwards from the button */
+.emoji-menu__panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+}
+
+.emoji-menu__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  gap: 4px;
+}
+
+.emoji-menu__item {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  font-size: 1.5rem;
+  line-height: 1;
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.emoji-menu__item:hover,
+.emoji-menu__item:focus-visible {
+  background: var(--bg-sunken);
+}
+
+.emoji-menu__item:active {
+  transform: scale(0.9);
+}
+
+.emoji-menu__mute {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.emoji-menu__item {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Bubble sits over the pawn corner so it doesn't hide the name */
+.player-chip__emoji {
+  top: -20px;
+  left: -6px;
+}
+
+.player-chip--right .player-chip__emoji {
+  left: auto;
+  right: -6px;
+}
+
+/* Phones: the picker opens as a centred panel above the footer */
+@media (max-width: 520px) {
+  .emoji-menu__panel {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+  }
+}
