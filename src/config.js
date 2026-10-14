@@ -5,7 +5,11 @@
 /** Only odd sizes keep a true centre column for both starting pawns. */
 export const GRID_SIZES = Object.freeze([7, 9]);
 
-export const WALL_LIMIT = Object.freeze({ MIN: 0, MAX: 50 });
+/**
+ * Walls per player. At least 10: with very few walls the player who moves first can
+ * simply race to the goal (e.g. 0 walls = a guaranteed win against the AI in 5 moves).
+ */
+export const WALL_LIMIT = Object.freeze({ MIN: 10, MAX: 50 });
 
 /** Chess-clock options for online games, in minutes per player (no bonus per move). */
 export const TIME_CONTROLS = Object.freeze([1, 3, 5, 10]);

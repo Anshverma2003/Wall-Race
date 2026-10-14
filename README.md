@@ -114,7 +114,7 @@ On a local static server (no Vercel functions) profiles and leaderboards work, b
 | Theme (dark / light) | Everyone | Dark by default |
 | Show my pawn at the bottom | Everyone | Rotates the board so your pawn starts at the bottom of your screen. Turn it off to see the fixed layout (P1 top, P2 bottom). |
 | Grid size | Host / vs-AI player | 7×7 or 9×9 (odd sizes only, so both pawns start dead centre) |
-| Walls per player | Host / vs-AI player | 0–50, or Unlimited (default 10) |
+| Walls per player | Host / vs-AI player | 10–50, or Unlimited (default 10). Fewer than 10 would let the first player simply race to the goal. |
 
 Match settings can be changed in the lobby (the guest sees changes live) or between games. They are locked during a match.
 
