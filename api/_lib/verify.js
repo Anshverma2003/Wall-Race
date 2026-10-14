@@ -12,6 +12,7 @@ import { GameModel } from '../../src/models/GameModel.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PLIES = 600;
+const REASONS = Object.freeze(['goal', 'timeout', 'forfeit']);
 
 export class VerifyError extends Error {}
 
@@ -22,7 +23,7 @@ const fail = (msg) => {
 export const isUuid = (v) => typeof v === 'string' && UUID.test(v);
 
 /** Validates the starting setup and normalises the move list. */
-function readGame(game) {
+function readGame(game, { allowEmpty = false } = {}) {
   if (!game || typeof game !== 'object') fail('Missing game.');
   const { size, wallLimit, startingPlayer, history } = game;
   if (!GRID_SIZES.includes(size)) fail('Invalid grid size.');
@@ -30,7 +31,7 @@ function readGame(game) {
     fail('Invalid wall limit.');
   }
   if (startingPlayer !== 0 && startingPlayer !== 1) fail('Invalid starting player.');
-  if (!Array.isArray(history) || history.length === 0 || history.length > MAX_PLIES) fail('Invalid move list.');
+  if (!Array.isArray(history) || (!allowEmpty && history.length === 0) || history.length > MAX_PLIES) fail('Invalid move list.');
 
   const moves = history.map((h) => {
     if (!h || (h.by !== 0 && h.by !== 1) || !Number.isInteger(h.r) || !Number.isInteger(h.c)) fail('Invalid move.');
@@ -46,7 +47,7 @@ function readGame(game) {
  * action (used to recompute AI moves). Throws VerifyError if anything is off.
  * @returns {GameModel} the finished game
  */
-export function replay(setup, check) {
+export function replay(setup, check, { finished = true } = {}) {
   const game = new GameModel({ size: setup.size, wallLimit: setup.wallLimit, startingPlayer: setup.startingPlayer });
   setup.history.forEach((entry, ply) => {
     if (game.isOver) fail('Moves after the game ended.');
@@ -56,7 +57,9 @@ export function replay(setup, check) {
     const result = game.applyAction(by, action);
     if (!result.ok) fail(`Illegal move at ply ${ply + 1}: ${result.reason}`);
   });
-  if (!game.isOver) fail('The game is not finished.');
+  // A game won on the board must end on its last move; a timeout / forfeit ends before anyone arrives.
+  if (finished && !game.isOver) fail('The game is not finished.');
+  if (!finished && game.isOver) fail('That game was won on the board, not on time or by forfeit.');
   return game;
 }
 
@@ -64,7 +67,8 @@ const countOf = (history, by, kind) => history.filter((h) => h.by === by && (!ki
 
 /**
  * Online game report.
- * @returns {{matchId:string, players:[string,string], winner:0|1, moves:number, grid:number, canonical:string}}
+ * body.result = { reason: 'goal'|'timeout'|'forfeit', winner } (missing = 'goal').
+ * @returns {{matchId:string, players:[string,string], winner:0|1, reason:string, moves:number, loserMoves:number, grid:number, canonical:string}}
  */
 export function verifyOnline(body) {
   const { matchId, players } = body ?? {};
@@ -72,10 +76,27 @@ export function verifyOnline(body) {
   if (!Array.isArray(players) || players.length !== 2 || !players.every(isUuid) || players[0] === players[1]) {
     fail('Invalid players.');
   }
-  const setup = readGame(body.game);
-  const game = replay(setup);
+  // How the game ended. Older clients send no result: that means "reached the goal".
+  const reason = body.result?.reason ?? 'goal';
+  if (!REASONS.includes(reason)) fail('Invalid result.');
 
-  // Both players' reports must be byte-identical to count.
+  // A timeout or forfeit can happen before anyone has moved.
+  const setup = readGame(body.game, { allowEmpty: reason !== 'goal' });
+  const game = replay(setup, null, { finished: reason === 'goal' });
+
+  let winner;
+  if (reason === 'goal') {
+    winner = game.winner;
+  } else if (reason === 'timeout') {
+    winner = 1 - game.turn; // only the player to move can run out of time
+    if (body.result.winner !== winner) fail('Only the player to move can lose on time.');
+  } else {
+    winner = body.result.winner;
+    if (winner !== 0 && winner !== 1) fail('Invalid winner.');
+  }
+  const loser = 1 - winner;
+
+  // Two reports of the same game must be byte-identical to count.
   const canonical = JSON.stringify({
     matchId: matchId.toLowerCase(),
     players: players.map((p) => p.toLowerCase()),
@@ -83,8 +104,29 @@ export function verifyOnline(body) {
     wallLimit: setup.wallLimit,
     startingPlayer: setup.startingPlayer,
     history: setup.history,
+    reason,
+    winner,
   });
-  return { matchId, players, winner: game.winner, moves: setup.history.length, grid: setup.size, canonical };
+  return {
+    matchId,
+    players,
+    winner,
+    reason,
+    moves: setup.history.length,
+    loserMoves: countOf(setup.history, loser),
+    grid: setup.size,
+    canonical,
+  };
+}
+
+/** An online game is starting between these two players. */
+export function verifyOnlineStart(body) {
+  const { matchId, players } = body ?? {};
+  if (!isUuid(matchId)) fail('Invalid match id.');
+  if (!Array.isArray(players) || players.length !== 2 || !players.every(isUuid) || players[0] === players[1]) {
+    fail('Invalid players.');
+  }
+  return { matchId, players };
 }
 
 /**

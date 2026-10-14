@@ -29,14 +29,22 @@ export class ResultsService {
    * first we poll briefly until the opponent's report arrives.
    * @returns {Promise<object|null>} server result ({status, ratings, deltas}) or null
    */
-  async reportOnline({ matchId, players, game }) {
-    const body = { kind: 'online', matchId, players, game };
+  async reportOnline({ matchId, players, game, result: outcome }) {
+    const body = { kind: 'online', matchId, players, game, result: outcome };
     let result = await this.#send(`online:${matchId}`, body);
     for (let i = 0; result?.status === 'waiting' && i < WAITING_RETRIES; i++) {
       await delay(WAITING_DELAY_MS);
       result = await this.#send(`online:${matchId}`, body, { retry: true });
     }
     return result;
+  }
+
+  /**
+   * An online game between these two players has started. The server needs
+   * both players' confirmation before it accepts a forfeit for this game.
+   */
+  registerStart({ matchId, players }) {
+    return this.#send(`start:${matchId}`, { kind: 'online-start', matchId, players });
   }
 
   /** Win against the Hard AI. */

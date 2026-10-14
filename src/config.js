@@ -7,11 +7,27 @@ export const GRID_SIZES = Object.freeze([7, 9]);
 
 export const WALL_LIMIT = Object.freeze({ MIN: 0, MAX: 50 });
 
+/** Chess-clock options for online games, in minutes per player (no bonus per move). */
+export const TIME_CONTROLS = Object.freeze([1, 3, 5, 10]);
+
+/**
+ * Online match timing rules.
+ *  DISCONNECT_GRACE_MS – a disconnected player has this long to come back (the game
+ *                        pauses meanwhile); after that they lose.
+ *  EARLY_LEAVE_MS      – leaving within this time of the start, before making a move,
+ *                        cancels the game with no rating change.
+ */
+export const MATCH_RULES = Object.freeze({
+  DISCONNECT_GRACE_MS: 60_000,
+  EARLY_LEAVE_MS: 10_000,
+});
+
 export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'dark',          // 'dark' | 'light'
   flipBoard: true,        // show the local player's pawn at the bottom
   gridSize: 7,            // host / vs-AI only
   wallLimit: 10,          // host / vs-AI only; null = unlimited
+  timeMinutes: 3,         // host only: chess clock per player in online games
   aiDifficulty: 'medium', // 'easy' | 'medium' | 'hard'
 });
 

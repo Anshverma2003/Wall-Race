@@ -39,7 +39,7 @@ export class RoomModel {
     this.role = null;
     this.localIndex = null;
     this.status = RoomStatus.LOBBY;
-    this.settings = { gridSize: GRID_SIZES[0], wallLimit: 10 };
+    this.settings = { gridSize: GRID_SIZES[0], wallLimit: 10, timeMinutes: 3 };
     this.seats = [emptySeat(), emptySeat()];
     this.rematch = [false, false];
     /** Id of the current / last game, used to report its result to the leaderboard. */
@@ -84,10 +84,11 @@ export class RoomModel {
     this.localIndex = 1;
   }
 
-  setSettings({ gridSize, wallLimit }) {
+  setSettings({ gridSize, wallLimit, timeMinutes }) {
     this.settings = {
       gridSize: GRID_SIZES.includes(gridSize) ? gridSize : GRID_SIZES[0],
       wallLimit: SettingsModel.sanitizeWallLimit(wallLimit),
+      timeMinutes: SettingsModel.sanitizeTime(timeMinutes),
     };
   }
 

@@ -8,6 +8,7 @@ export class ModalView {
     this.overlay = document.getElementById('modal-overlay');
     this.title = document.getElementById('modal-title');
     this.message = document.getElementById('modal-message');
+    this.note = document.getElementById('modal-note');
     this.actions = document.getElementById('modal-actions');
   }
 
@@ -25,10 +26,11 @@ export class ModalView {
    *   id?: string,
    *   title: string,
    *   message?: string,
+   *   note?: {text:string, tone?:'up'|'down'|'muted'} | null,   highlighted line, e.g. the rating change
    *   actions: {label:string, variant?:'primary'|'secondary'|'ghost', disabled?:boolean, onClick?:() => void}[]
    * }} options
    */
-  show({ id = null, title, message = '', actions }) {
+  show({ id = null, title, message = '', note = null, actions }) {
     const focusedIndex = this.isOpen && this.#id === id
       ? [...this.actions.children].indexOf(document.activeElement)
       : -1;
@@ -37,6 +39,9 @@ export class ModalView {
     this.title.textContent = title;
     this.message.textContent = message;
     this.message.hidden = !message;
+    this.note.textContent = note?.text ?? '';
+    this.note.dataset.tone = note?.tone ?? 'muted';
+    this.note.hidden = !note?.text;
     this.actions.replaceChildren(
       ...actions.map(({ label, variant = 'secondary', disabled = false, onClick }) => {
         const btn = document.createElement('button');

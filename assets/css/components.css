@@ -610,3 +610,30 @@
 .inline-edit > .tag-input {
   flex: 0 1 8rem;
 }
+
+/* Highlighted line in a modal, e.g. "Rating 1216 (+16)" in the game-over card */
+.modal__note {
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.modal__note[data-tone="up"] {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, var(--bg-sunken));
+}
+
+.modal__note[data-tone="down"] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, var(--bg-sunken));
+}
+
+.field__hint {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
