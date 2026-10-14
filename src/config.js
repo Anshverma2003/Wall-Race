@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   wallLimit: 10,          // host / vs-AI only; null = unlimited
   timeMinutes: 3,         // host only: chess clock per player in online games
   aiDifficulty: 'medium', // 'easy' | 'medium' | 'hard'
+  muteEmojis: false,      // hide the opponent's emoji reactions
 });
 
 /**
@@ -117,3 +118,15 @@ export const PLAYER_RULES = Object.freeze({
 });
 
 export const LEADERBOARD = Object.freeze({ LIMIT: 50 });
+
+/**
+ * Emoji reactions in online games. Sent over the existing peer-to-peer
+ * connection (no server). Only these emojis are accepted, from either side.
+ *  SHOW_MS     – how long an emoji stays on the sender's name
+ *  COOLDOWN_MS – minimum time between two emojis from the same player
+ */
+export const EMOJI = Object.freeze({
+  SET: Object.freeze(['👋', '😂', '😮', '😤', '👍', '🔥', '😭', '🤝']),
+  SHOW_MS: 3000,
+  COOLDOWN_MS: 2000,
+});

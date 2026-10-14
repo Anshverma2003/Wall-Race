@@ -1,3 +1,4 @@
+import { EMOJI } from '../config.js';
 import { PremoveQueue } from '../models/PremoveQueue.js';
 import { RoomStatus } from '../models/RoomModel.js';
 
@@ -71,6 +72,10 @@ export class GameController {
     });
     this.view.on('history', (where) => this.#navigate(where));
     this.view.on('clear-premoves', () => this.#clearPremoves());
+    this.view.on('emoji', (emoji) => {
+      if (this.#session?.sendEmoji?.(emoji)) this.view.startEmojiCooldown(EMOJI.COOLDOWN_MS);
+    });
+    this.view.on('emoji-mute', (muted) => this.settings.update({ muteEmojis: muted }));
     this.view.on('leave', () => this.#confirmLeave());
   }
 
@@ -142,6 +147,18 @@ export class GameController {
     this.#premoves.clear();
     this.#premoveInFlight = false;
     clearTimeout(this.#premoveTimer);
+    this.view.hideEmojis();
+  }
+
+  /**
+   * Show an emoji reaction on a player's name. The opponent's are skipped when
+   * muted; your own always show so you can see what you sent.
+   */
+  showEmoji(player, emoji) {
+    const s = this.#session;
+    if (!s) return;
+    if (player !== s.localIndex && this.settings.muteEmojis) return;
+    this.view.showEmoji(player, emoji);
   }
 
   // ------------------------------------------------------------- rendering
@@ -211,6 +228,7 @@ export class GameController {
       offline: [0, 1].map((i) => i !== me && !online),
     });
     if (s.clock?.isRunning || s.banner) this.#startTicker();
+    this.view.renderEmojiMenu({ enabled: !!s.canEmoji, muted: this.settings.muteEmojis });
   }
 
   #announce(event) {

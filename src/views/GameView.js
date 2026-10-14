@@ -1,4 +1,5 @@
 import { EventEmitter } from '../core/EventEmitter.js';
+import { EMOJI } from '../config.js';
 import { formatClock } from '../models/ClockModel.js';
 import { BoardView } from './BoardView.js';
 
@@ -10,9 +11,13 @@ const LOW_TIME_MS = 20_000;
  * Board events ('move', 'cell', 'wall', 'invalid', 'preview') are re-emitted.
  *
  * Events: 'move', 'cell', 'wall', 'invalid', 'preview', 'leave',
- *         'history' ('first'|'prev'|'next'|'last'), 'clear-premoves'
+ *         'history' ('first'|'prev'|'next'|'last'), 'clear-premoves',
+ *         'emoji' (emoji), 'emoji-mute' (boolean)
  */
 export class GameView extends EventEmitter {
+  /** Hides each chip's emoji bubble again after EMOJI.SHOW_MS. */
+  #emojiTimers = [null, null];
+  #cooldownTimer = null;
   constructor() {
     super();
     this.board = new BoardView(document.getElementById('board'));
@@ -36,6 +41,7 @@ export class GameView extends EventEmitter {
       if (btn && !btn.disabled) this.emit('history', btn.dataset.nav);
     });
     this.clearPremovesBtn.addEventListener('click', () => this.emit('clear-premoves'));
+    this.#initEmojiMenu();
     document.getElementById('btn-game-leave').addEventListener('click', () => this.emit('leave'));
   }
 
@@ -102,6 +108,89 @@ export class GameView extends EventEmitter {
 
   setHint(text) {
     this.hint.textContent = text;
+  }
+
+  // ---------------------------------------------------------- emoji reactions
+
+  #initEmojiMenu() {
+    this.emojiMenu = document.getElementById('emoji-menu');
+    this.emojiToggle = document.getElementById('btn-emoji');
+    this.emojiPanel = document.getElementById('emoji-panel');
+    this.emojiMute = document.getElementById('emoji-mute');
+    const grid = document.getElementById('emoji-grid');
+
+    grid.replaceChildren(
+      ...EMOJI.SET.map((emoji) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'emoji-menu__item';
+        btn.setAttribute('role', 'menuitem');
+        btn.setAttribute('aria-label', `Send ${emoji}`);
+        btn.textContent = emoji;
+        btn.addEventListener('click', () => {
+          this.#closeEmojiPanel();
+          this.emit('emoji', emoji);
+        });
+        return btn;
+      }),
+    );
+
+    this.emojiToggle.addEventListener('click', () => {
+      if (this.emojiPanel.hidden) this.#openEmojiPanel();
+      else this.#closeEmojiPanel();
+    });
+    this.emojiMute.addEventListener('change', () => this.emit('emoji-mute', this.emojiMute.checked));
+    document.addEventListener('click', (e) => {
+      if (!this.emojiPanel.hidden && !this.emojiMenu.contains(e.target)) this.#closeEmojiPanel();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.#closeEmojiPanel();
+    });
+  }
+
+  #openEmojiPanel() {
+    this.emojiPanel.hidden = false;
+    this.emojiToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  #closeEmojiPanel() {
+    this.emojiPanel.hidden = true;
+    this.emojiToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  /**
+   * @param {{enabled:boolean, muted:boolean}} state enabled: online game in progress
+   */
+  renderEmojiMenu({ enabled, muted }) {
+    this.emojiMenu.hidden = !enabled;
+    if (!enabled) this.#closeEmojiPanel();
+    this.emojiMute.checked = muted;
+  }
+
+  /** Show an emoji on a player's name for EMOJI.SHOW_MS. */
+  showEmoji(player, emoji) {
+    const bubble = this.chips[player].querySelector('.player-chip__emoji');
+    clearTimeout(this.#emojiTimers[player]);
+    bubble.textContent = emoji;
+    bubble.hidden = false;
+    bubble.classList.remove('player-chip__emoji--pop');
+    void bubble.offsetWidth; // restart the pop animation
+    bubble.classList.add('player-chip__emoji--pop');
+    this.#emojiTimers[player] = setTimeout(() => { bubble.hidden = true; }, EMOJI.SHOW_MS);
+  }
+
+  hideEmojis() {
+    this.chips.forEach((chip, i) => {
+      clearTimeout(this.#emojiTimers[i]);
+      chip.querySelector('.player-chip__emoji').hidden = true;
+    });
+  }
+
+  /** Disable the emoji button briefly after sending (anti-spam). */
+  startEmojiCooldown(ms) {
+    clearTimeout(this.#cooldownTimer);
+    this.emojiToggle.disabled = true;
+    this.#cooldownTimer = setTimeout(() => { this.emojiToggle.disabled = false; }, ms);
   }
 
   setBanner(text) {

@@ -28,6 +28,7 @@ export class SettingsModel extends EventEmitter {
     if (GRID_SIZES.includes(Number(raw.gridSize))) out.gridSize = Number(raw.gridSize);
     out.wallLimit = SettingsModel.sanitizeWallLimit(raw.wallLimit);
     if (Object.hasOwn(AI_LEVELS, raw.aiDifficulty)) out.aiDifficulty = raw.aiDifficulty;
+    if (typeof raw.muteEmojis === 'boolean') out.muteEmojis = raw.muteEmojis;
     out.timeMinutes = SettingsModel.sanitizeTime(raw.timeMinutes);
     return out;
   }
@@ -51,6 +52,7 @@ export class SettingsModel extends EventEmitter {
   get wallLimit() { return this.#data.wallLimit; }
   get aiDifficulty() { return this.#data.aiDifficulty; }
   get timeMinutes() { return this.#data.timeMinutes; }
+  get muteEmojis() { return this.#data.muteEmojis; }
 
   /** The subset shared with the opponent when hosting. */
   get matchSettings() {

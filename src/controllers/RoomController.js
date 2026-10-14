@@ -1,5 +1,5 @@
 import { EventEmitter } from '../core/EventEmitter.js';
-import { MATCH_RULES, NETWORK, ROOM, STORAGE_KEYS } from '../config.js';
+import { EMOJI, MATCH_RULES, NETWORK, ROOM, STORAGE_KEYS } from '../config.js';
 import { ClockModel } from '../models/ClockModel.js';
 import { GameModel } from '../models/GameModel.js';
 import { RoomStatus, sanitizeCard } from '../models/RoomModel.js';
@@ -15,11 +15,13 @@ import { generateId, generateRoomCode, generateUuid, isValidRoomCode, randomInt 
  *    action  { action }           move / wall intent, validated by the host
  *    rematch {}                   vote to play again
  *    leave   {}                   leaving the room on purpose
+ *    emoji   { emoji }            a reaction from EMOJI.SET (shown on the sender's name)
  *
  *  host → guest
  *    sync    { room, game, clock, event }  full authoritative state (+ what just happened)
  *    reject  { reason }             cannot join (room full)
  *    leave   {}                     host closed the room
+ *    emoji   { emoji }              the host's reaction
  *
  * The host is authoritative: it runs the GameModel and the chess clock,
  * validates every action and broadcasts the full state after each change.
@@ -64,6 +66,8 @@ export class RoomController extends EventEmitter {
   #matchPlayers = null;
   /** Disconnect countdown: {player, deadline, early, timer} while waiting for someone to come back. */
   #grace = null;
+  #lastEmojiSent = 0;
+  #lastEmojiReceived = 0;
 
   /**
    * @param {{
@@ -347,6 +351,36 @@ export class RoomController extends EventEmitter {
     return true;
   }
 
+  // --------------------------------------------------------- emoji reactions
+
+  /** Emojis can be sent while an online game is being played and the opponent is connected. */
+  get canEmoji() {
+    return this.room.status === RoomStatus.PLAYING && !!this.game && !this.game.isOver && this.opponentOnline;
+  }
+
+  /**
+   * Send a reaction to the opponent over the existing peer-to-peer connection
+   * and show it on our own name too. @returns {boolean} sent
+   */
+  sendEmoji(emoji) {
+    if (!EMOJI.SET.includes(emoji) || !this.canEmoji) return false;
+    if (Date.now() - this.#lastEmojiSent < EMOJI.COOLDOWN_MS) return false;
+    const target = this.room.isHost ? this.#guestConnId : this.#hostConnId;
+    if (!target || !this.network.send(target, { t: 'emoji', emoji })) return false;
+    this.#lastEmojiSent = Date.now();
+    this.#gameController?.showEmoji(this.room.localIndex, emoji);
+    return true;
+  }
+
+  /** A reaction from the opponent: only known emojis, and not faster than the cooldown (modified clients). */
+  #receiveEmoji(player, emoji) {
+    if (!EMOJI.SET.includes(emoji) || this.room.status !== RoomStatus.PLAYING) return;
+    const now = Date.now();
+    if (now - this.#lastEmojiReceived < EMOJI.COOLDOWN_MS * 0.75) return; // a little slack for network jitter
+    this.#lastEmojiReceived = now;
+    this.#gameController?.showEmoji(player, emoji);
+  }
+
   requestRematch() {
     if (this.room.isHost) this.#voteRematch(0);
     else if (this.#hostConnId) this.network.send(this.#hostConnId, { t: 'rematch' });
@@ -572,6 +606,9 @@ export class RoomController extends EventEmitter {
 
   #onHostMessage(msg) {
     switch (msg.t) {
+      case 'emoji':
+        this.#receiveEmoji(0, msg.emoji);
+        break;
       case 'sync': {
         clearTimeout(this.#welcomeTimer);
         this.reconnecting = false;
@@ -669,6 +706,9 @@ export class RoomController extends EventEmitter {
         break;
       case 'rematch':
         if (connId === this.#guestConnId) this.#voteRematch(1);
+        break;
+      case 'emoji':
+        if (connId === this.#guestConnId) this.#receiveEmoji(1, msg.emoji);
         break;
       case 'leave':
         if (connId === this.#guestConnId) {
