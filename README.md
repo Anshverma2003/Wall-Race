@@ -53,6 +53,11 @@ While it's your opponent's (or the AI's) turn, click any square or wall gap to q
 - **Early leave:** leaving or disconnecting **before making any move and within 10 seconds of the start** cancels the game. Nobody's rating changes.
 - Both players' ratings are shown next to their names, and the game-over card shows your rating change (e.g. **Rating 1232 (+16)**).
 
+### Emoji reactions (online games)
+- During a game, tap 🙂 next to the room code and pick one of 👋 😂 😮 😤 👍 🔥 😭 🤝. It pops up on **your name for 3 seconds**, on both screens.
+- One emoji every 2 seconds. "Mute opponent's emojis" in the picker hides theirs (yours still show); the choice is remembered.
+- Emojis travel over the same peer-to-peer connection as the moves – no server involved. Each side only accepts the 8 emojis above and ignores floods from a modified client.
+
 ## Play vs AI
 
 Choose **Easy / Medium / Hard** on the home screen and press **Play vs AI**. You play P1 (red), the AI plays P2 (blue), and who starts is random. Grid size and wall limit come from ⚙ Settings.

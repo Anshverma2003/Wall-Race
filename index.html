@@ -195,6 +195,7 @@
       <div class="game">
         <div class="game__hud">
           <div class="player-chip" id="chip-p0" data-player="0">
+            <span class="player-chip__emoji" aria-live="polite" hidden></span>
             <span class="player-chip__pawn">P1</span>
             <span class="player-chip__info">
               <span class="player-chip__name-row"><span class="player-chip__name">Player 1</span><span class="player-chip__rating" title="Rating" hidden></span></span>
@@ -204,6 +205,7 @@
           </div>
           <div class="game__status" id="game-status" role="status" aria-live="polite"></div>
           <div class="player-chip player-chip--right" id="chip-p1" data-player="1">
+            <span class="player-chip__emoji" aria-live="polite" hidden></span>
             <span class="player-chip__clock" role="timer" hidden></span>
             <span class="player-chip__info">
               <span class="player-chip__name-row"><span class="player-chip__name">Player 2</span><span class="player-chip__rating" title="Rating" hidden></span></span>
@@ -239,6 +241,16 @@
           <p class="game__hint" id="game-hint"></p>
           <div class="game__footer-actions">
             <button class="btn btn--small btn--premove" id="btn-clear-premoves" type="button" hidden>Clear premoves</button>
+            <div class="emoji-menu" id="emoji-menu" hidden>
+              <button class="icon-btn emoji-menu__toggle" id="btn-emoji" type="button" aria-label="Send an emoji" aria-haspopup="true" aria-expanded="false" title="Send an emoji">🙂</button>
+              <div class="emoji-menu__panel" id="emoji-panel" role="menu" hidden>
+                <div class="emoji-menu__grid" id="emoji-grid"></div>
+                <label class="emoji-menu__mute">
+                  <input type="checkbox" id="emoji-mute" />
+                  <span>Mute opponent's emojis</span>
+                </label>
+              </div>
+            </div>
             <span class="game__room"><span id="game-footer-label">Room</span> <b id="game-footer-value">------</b></span>
             <button class="btn btn--small btn--ghost" id="btn-game-leave" type="button">Leave</button>
           </div>
