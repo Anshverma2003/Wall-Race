@@ -64,6 +64,8 @@ export class RoomController extends EventEmitter {
   #matchPlayers = null;
   /** Disconnect countdown: {player, deadline, early, timer} while waiting for someone to come back. */
   #grace = null;
+  /** Why the last game was forfeited: 'left' (on purpose) or 'disconnected'; null otherwise. */
+  #endCause = null;
 
   /**
    * @param {{
@@ -466,7 +468,7 @@ export class RoomController extends EventEmitter {
         // Left on purpose: immediate loss, or a cancelled game if it was an early leave.
         this.room.seats[1] = { ...this.room.seats[1], playerId: null, connected: false };
         if (this.#isEarly(1)) this.#cancelMatch('Your opponent left before moving. Game cancelled – no rating change.');
-        else this.#endMatch(0, 'forfeit');
+        else this.#endMatch(0, 'forfeit', 'left');
       } else {
         // Dropped: pause and give them time to come back.
         this.room.seats[1].connected = false;
@@ -599,7 +601,7 @@ export class RoomController extends EventEmitter {
           if (this.#isEarly(0)) {
             this.#abortToHome('The host left before moving. Game cancelled – no rating change.', { keepSession: false });
           } else {
-            this.#winAfterHostLeft();
+            this.#winAfterHostLeft('left');
           }
           break;
         }
@@ -831,9 +833,13 @@ export class RoomController extends EventEmitter {
     return this.game.actionsBy(player) === 0 && performance.now() - this.#startedAt < MATCH_RULES.EARLY_LEAVE_MS;
   }
 
-  /** End the current game without reaching the goal (timeout / forfeit). Works on host and guest. */
-  #endMatch(winner, reason) {
+  /**
+   * End the current game without reaching the goal (timeout / forfeit). Works on host and guest.
+   * @param {'left'|'disconnected'|null} [cause] for a forfeit: opponent left on purpose or dropped
+   */
+  #endMatch(winner, reason, cause = null) {
     if (!this.game || this.game.isOver) return;
+    this.#endCause = cause; // must be set before the result is reported (#broadcast below)
     this.game.endGame(winner, reason);
     this.clock?.stop();
     this.#stopMatchTimers();
@@ -877,7 +883,7 @@ export class RoomController extends EventEmitter {
       if (grace.early) this.#cancelMatch("Your opponent didn't come back. Game cancelled – no rating change.");
       else {
         this.room.seats[1] = { ...this.room.seats[1], playerId: null, connected: false };
-        this.#endMatch(0, 'forfeit');
+        this.#endMatch(0, 'forfeit', 'disconnected');
       }
       return;
     }
@@ -888,14 +894,17 @@ export class RoomController extends EventEmitter {
     if (grace.early) {
       this.#abortToHome("The host didn't come back. Game cancelled – no rating change.", { keepSession: false });
     } else {
-      this.#winAfterHostLeft();
+      this.#winAfterHostLeft('disconnected');
     }
   }
 
-  /** Guest: the host left or never came back – we win by forfeit. The room is gone afterwards. */
-  #winAfterHostLeft() {
+  /**
+   * Guest: the host left or never came back – we win by forfeit. The room is gone afterwards.
+   * @param {'left'|'disconnected'} cause
+   */
+  #winAfterHostLeft(cause) {
     this.room.seats[0] = { ...this.room.seats[0], connected: false };
-    this.#endMatch(this.room.localIndex, 'forfeit');
+    this.#endMatch(this.room.localIndex, 'forfeit', cause);
     this.#clearSession();
   }
 
@@ -958,7 +967,12 @@ export class RoomController extends EventEmitter {
     this.#reported.add(matchId);
 
     const me = this.room.localIndex;
-    if (showResult) this.#setRatingChange({ matchId, status: 'pending' });
+    if (showResult) {
+      // Instant preview with the same Elo formula as the server; the server's answer replaces it.
+      // Not for a disconnect forfeit: the server is most likely to refuse those (opponent still online).
+      const preview = game.endReason === 'forfeit' && this.#endCause === 'disconnected' ? null : this.#previewRating(game.winner);
+      this.#setRatingChange(preview ? { matchId, status: 'preview', ...preview } : { matchId, status: 'pending' });
+    }
     const result = await this.results.reportOnline({
       matchId,
       players,
@@ -983,6 +997,20 @@ export class RoomController extends EventEmitter {
     } else {
       this.#setRatingChange({ matchId, status: 'none' });
     }
+  }
+
+  /**
+   * Local estimate of my new rating – the same Elo as _finalize_online_match()
+   * in supabase/schema.sql (K = 32, rounded half away from zero).
+   * @returns {{rating:number, delta:number}|null} null if a rating is unknown
+   */
+  #previewRating(winner) {
+    const [r0, r1] = this.ratings;
+    if (!r0 || !r1) return null;
+    const e0 = 1 / (1 + 10 ** ((r1 - r0) / 400));
+    const raw = ELO_K * ((winner === 0 ? 1 : 0) - e0);
+    const d = Math.sign(raw) * Math.round(Math.abs(raw));
+    return this.room.localIndex === 0 ? { rating: r0 + d, delta: d } : { rating: r1 - d, delta: -d };
   }
 
   #setRatingChange(change) {
@@ -1029,6 +1057,9 @@ export class RoomController extends EventEmitter {
 // ------------------------------------------------------------------ helpers
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Elo K-factor – must match _finalize_online_match() in supabase/schema.sql. */
+const ELO_K = 32;
 
 function describeError(err) {
   switch (err?.type) {
