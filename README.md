@@ -31,6 +31,9 @@ An internet connection is required. Players connect peer-to-peer over WebRTC usi
    - **Place a wall:** one segment between two adjacent dots. On a mouse, hover to preview and click to place. On touch, tap once to preview and tap again to confirm.
 5. The first player to reach the opposite edge **wins instantly**. Both players can then choose **Play again** (a rematch starts when both agree) or **Exit**.
 
+### Tutorial
+New players see a short animated tutorial right after they create their profile. It has six steps (the goal, moving, walls, "never fully block", jumping) and each one plays a looping demo on a small board. You can watch it again anytime from the home screen: **How to play → ▶ Watch the tutorial**. The demos are scripted in [src/tutorial/tutorialSteps.js](src/tutorial/tutorialSteps.js) and drawn with the real rules engine and board, so they always match the game.
+
 ### Move history (`|<` `<` `>` `>|`)
 The buttons under the board step through every position of the current game: `|<` goes to the start, `<` and `>` move one move back or forward, and `>|` returns to the live position. Past positions are read-only. When your opponent or the AI makes a move, the board jumps back to live. The history is part of the game state, so it's shared with your opponent and survives a page refresh. No database is needed.
 
@@ -173,6 +176,7 @@ src/
     ProfileView.js          First-open name screen, recovery, Profile section in Settings, top-bar badge
     LeaderboardView.js      Leaderboard screen and tables
     HistoryView.js          My games list and the replay screen
+    TutorialView.js         "How to play" dialog: mini board, step text, dots
     HomeView.js / LobbyView.js / SettingsView.js / ModalView.js / ToastView.js / ScreenView.js
   controllers/
     AppController.js        Composition root and screen navigation
@@ -183,6 +187,9 @@ src/
     ProfileController.js    Create / restore / rename profile, tag availability
     LeaderboardController.js  Loads the leaderboards
     HistoryController.js    Loads my games, rebuilds a game for replay
+    TutorialController.js   Plays the tutorial's looping demos, step navigation
+  tutorial/
+    tutorialSteps.js        The tutorial's steps and their demo frames
   services/
     PeerService.js          PeerJS wrapper with heartbeat and disconnect detection
     AIService.js            Promise wrapper around the AI worker (main-thread fallback)

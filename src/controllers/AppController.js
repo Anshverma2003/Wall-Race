@@ -5,6 +5,7 @@ import { LeaderboardController } from './LeaderboardController.js';
 import { ProfileController } from './ProfileController.js';
 import { RoomController } from './RoomController.js';
 import { SettingsController } from './SettingsController.js';
+import { TutorialController } from './TutorialController.js';
 import { PlayerModel } from '../models/PlayerModel.js';
 import { RoomModel } from '../models/RoomModel.js';
 import { SettingsModel } from '../models/SettingsModel.js';
@@ -23,6 +24,7 @@ import { ProfileView } from '../views/ProfileView.js';
 import { ScreenView } from '../views/ScreenView.js';
 import { SettingsView } from '../views/SettingsView.js';
 import { ToastView } from '../views/ToastView.js';
+import { TutorialView } from '../views/TutorialView.js';
 
 /**
  * Composition root: creates models, services, views and controllers,
@@ -60,6 +62,7 @@ export class AppController {
       view: new ProfileView(),
       settingsCtrl: this.settingsCtrl,
       toast: this.toast,
+      onCreated: () => this.tutorialCtrl.open(), // new players see "How to play" once
     });
 
     this.roomCtrl = new RoomController({
@@ -115,6 +118,11 @@ export class AppController {
       homeButton: document.getElementById('btn-open-history'),
     });
 
+    this.tutorialCtrl = new TutorialController({
+      view: new TutorialView(),
+      homeButton: document.getElementById('btn-open-tutorial'),
+    });
+
     lobbyView.on('edit-settings', () => this.settingsCtrl.open());
   }
 
@@ -135,6 +143,7 @@ export class AppController {
     this.aiCtrl.init({ canResume: canResumeAi });
     this.leaderboardCtrl.init();
     this.historyCtrl.init();
+    this.tutorialCtrl.init();
 
     // Cross-controller reactions
     this.roomCtrl.on('change', () => this.settingsCtrl.refresh());
