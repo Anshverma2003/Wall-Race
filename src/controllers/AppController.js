@@ -1,5 +1,6 @@
 import { AIController } from './AIController.js';
 import { GameController } from './GameController.js';
+import { HistoryController } from './HistoryController.js';
 import { LeaderboardController } from './LeaderboardController.js';
 import { ProfileController } from './ProfileController.js';
 import { RoomController } from './RoomController.js';
@@ -13,6 +14,7 @@ import { ResultsService } from '../services/ResultsService.js';
 import { StorageService } from '../services/StorageService.js';
 import { SupabaseService } from '../services/SupabaseService.js';
 import { GameView } from '../views/GameView.js';
+import { HistoryView } from '../views/HistoryView.js';
 import { HomeView } from '../views/HomeView.js';
 import { LeaderboardView } from '../views/LeaderboardView.js';
 import { LobbyView } from '../views/LobbyView.js';
@@ -103,6 +105,16 @@ export class AppController {
       homeButton: document.getElementById('btn-open-leaderboard'),
     });
 
+    this.historyCtrl = new HistoryController({
+      app: this,
+      supabase: this.supabase,
+      player: this.player,
+      settings: this.settings,
+      view: new HistoryView(),
+      toast: this.toast,
+      homeButton: document.getElementById('btn-open-history'),
+    });
+
     lobbyView.on('edit-settings', () => this.settingsCtrl.open());
   }
 
@@ -122,6 +134,7 @@ export class AppController {
     this.gameCtrl.init();
     this.aiCtrl.init({ canResume: canResumeAi });
     this.leaderboardCtrl.init();
+    this.historyCtrl.init();
 
     // Cross-controller reactions
     this.roomCtrl.on('change', () => this.settingsCtrl.refresh());
@@ -136,7 +149,7 @@ export class AppController {
     if (this.player.exists) this.results.flushPending();
   }
 
-  /** @param {'home'|'lobby'|'game'|'leaderboard'} name */
+  /** @param {'home'|'lobby'|'game'|'leaderboard'|'history'|'replay'} name */
   showScreen(name) {
     this.screens.show(name);
   }

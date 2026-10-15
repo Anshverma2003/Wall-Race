@@ -53,6 +53,11 @@ While it's your opponent's (or the AI's) turn, click any square or wall gap to q
 - **Early leave:** leaving or disconnecting **before making any move and within 10 seconds of the start** cancels the game. Nobody's rating changes.
 - Both players' ratings are shown next to their names, and the game-over card shows your rating change (e.g. **Rating 1232 (+16)**).
 
+### My games (history)
+- Home → **My games** lists your **last 50 online games**: opponent, win/loss, how it ended, moves, board size and rating change. Only you can see your games (the list is loaded with your recovery code).
+- Tap a game to **replay it move by move** with `|<` `<` `>` `>|`. The moves are the ones the server verified when the game was reported, stored with the match (`online_matches.moves_list`, ~1–3 KB per game).
+- Games played before this feature are listed but can't be replayed (their moves weren't saved).
+
 ### Emoji reactions (online games)
 - During a game, tap 🙂 next to the room code and pick one of 👋 😂 😮 😤 👍 🔥 😭 🤝. It pops up on **your name for 3 seconds**, on both screens.
 - One emoji every 2 seconds. "Mute opponent's emojis" in the picker hides theirs (yours still show); the choice is remembered.
@@ -106,7 +111,7 @@ Browsers use Supabase's **publishable** key and can only call the functions in [
 
 ### Setup
 1. **Database:** in Supabase open SQL Editor, paste the whole of [supabase/schema.sql](supabase/schema.sql) and click Run. It is safe to run again.
-   - **Already set up before the chess clock existed?** Run these once instead, in order: [002_clock_and_forfeits.sql](supabase/migrations/002_clock_and_forfeits.sql), then [003_forfeit_heartbeat.sql](supabase/migrations/003_forfeit_heartbeat.sql).
+   - **Already set up with an older schema?** Run the migrations you haven't run yet, in order: [002_clock_and_forfeits.sql](supabase/migrations/002_clock_and_forfeits.sql), [003_forfeit_heartbeat.sql](supabase/migrations/003_forfeit_heartbeat.sql), [004_game_history.sql](supabase/migrations/004_game_history.sql). Always run a migration **before** deploying the code that needs it.
 2. **Secret key:** in Supabase open Project Settings → API Keys and copy a **secret** key (`sb_secret_...`). In Vercel open the project → Settings → Environment Variables and add `SUPABASE_SECRET_KEY` with that value for Production and Preview. Never put this key in the frontend or in git.
 3. Redeploy. The publishable key and project URL are already in [src/config.js](src/config.js).
 
@@ -167,6 +172,7 @@ src/
     GameView.js             HUD, status, banner and footer around the board
     ProfileView.js          First-open name screen, recovery, Profile section in Settings, top-bar badge
     LeaderboardView.js      Leaderboard screen and tables
+    HistoryView.js          My games list and the replay screen
     HomeView.js / LobbyView.js / SettingsView.js / ModalView.js / ToastView.js / ScreenView.js
   controllers/
     AppController.js        Composition root and screen navigation
@@ -176,6 +182,7 @@ src/
     SettingsController.js   Settings dialog ↔ model, theme, host-only gating
     ProfileController.js    Create / restore / rename profile, tag availability
     LeaderboardController.js  Loads the leaderboards
+    HistoryController.js    Loads my games, rebuilds a game for replay
   services/
     PeerService.js          PeerJS wrapper with heartbeat and disconnect detection
     AIService.js            Promise wrapper around the AI worker (main-thread fallback)

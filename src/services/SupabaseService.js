@@ -73,6 +73,16 @@ export class SupabaseService {
     return this.rpc('player_cards', { p_ids: ids });
   }
 
+  /** My most recent online games (private: needs my recovery code). */
+  myGames(code, limit = 50) {
+    return this.rpc('my_games', { p_code: code, p_limit: limit });
+  }
+
+  /** One of my games with its full move list, for the replay screen. */
+  myGame(code, matchId) {
+    return this.rpc('my_game', { p_code: code, p_match_id: matchId });
+  }
+
   leaderboardOnline(limit, playerId) {
     return this.rpc('leaderboard_online', { p_limit: limit, p_player: playerId ?? null });
   }
