@@ -34,6 +34,7 @@ export class ProfileController {
    *   view: import('../views/ProfileView.js').ProfileView,
    *   settingsCtrl: import('./SettingsController.js').SettingsController,
    *   toast: import('../views/ToastView.js').ToastView,
+   *   onCreated?: () => void,   called once a brand-new profile has been saved
    * }} deps
    */
   constructor(deps) {
@@ -49,6 +50,7 @@ export class ProfileController {
     view.on('done', () => {
       view.close();
       this.toast.show(`Welcome, ${player.label}!`, 'success');
+      this.onCreated?.(); // e.g. show the "How to play" tutorial to the new player
     });
     view.on('copy-code', () => this.#copyCode());
     view.on('save-name', (name) => this.#saveName(name));

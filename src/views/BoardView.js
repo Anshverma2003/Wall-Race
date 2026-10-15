@@ -376,6 +376,21 @@ export class BoardView extends EventEmitter {
     return this.#mode !== 'view' && slot.dataset.disabled !== 'true';
   }
 
+  /**
+   * Draw a wall outline without any pointer input (used by the tutorial).
+   * ok=false shows it as a forbidden wall (red, dashed). Cleared by the next render().
+   */
+  showGhostWall(wall, ok) {
+    const line = el('line', {
+      class: 'wall-preview',
+      'data-valid': String(ok),
+      'data-pending': 'false',
+      ...this.#wallLineInset(wall, 3),
+      'stroke-width': WALL_W,
+    });
+    this.#layers.preview.replaceChildren(line);
+  }
+
   #showPreview(wall, pending) {
     const check = this.#validateWall(wall);
     const l = this.#wallLineInset(wall, 3);

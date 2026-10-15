@@ -1128,3 +1128,81 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* ---------- How to play tutorial ---------- */
+.dialog--tutorial {
+  max-width: 420px;
+}
+
+.tutorial {
+  gap: 14px;
+}
+
+.tutorial__count {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.tutorial__board {
+  width: 100%;
+  max-width: 300px;
+  justify-self: center;
+}
+
+/* The demo board is not clickable */
+.tutorial__board,
+.tutorial__board * {
+  pointer-events: none;
+}
+
+.tutorial__copy {
+  display: grid;
+  gap: 6px;
+  min-height: 7.5em; /* keeps the buttons from jumping between steps */
+}
+
+.tutorial__title {
+  font-size: 1.15rem;
+}
+
+.tutorial__text {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.tutorial__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tutorial__dots {
+  display: flex;
+  gap: 6px;
+}
+
+.tutorial__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.tutorial__dot[data-active="true"] {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+
+/* Home: "How to play" card with the tutorial button and the written rules */
+.rules details {
+  margin-top: 10px;
+}
+
+.rules details summary {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
