@@ -116,6 +116,10 @@ export function verifyOnline(body) {
     loserMoves: countOf(setup.history, loser),
     grid: setup.size,
     canonical,
+    // verified replay data for the game history
+    history: setup.history,
+    wallLimit: setup.wallLimit,
+    startingPlayer: setup.startingPlayer,
   };
 }
 
