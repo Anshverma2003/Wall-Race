@@ -1113,3 +1113,18 @@
     padding-left: 0;
   }
 }
+
+/* Older games without saved moves: tappable, but explain instead of opening */
+.history__row[data-replay="false"] {
+  cursor: pointer;
+}
+
+.history__noreplay {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

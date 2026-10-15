@@ -29,6 +29,7 @@ export class HistoryController {
     this.view.on('back', () => this.app.showScreen('home'));
     this.view.on('refresh', () => this.load());
     this.view.on('open', (matchId) => this.openReplay(matchId));
+    this.view.on('no-replay', () => this.#explainNoReplay());
     this.view.on('replay-back', () => this.app.showScreen('history'));
     this.view.on('replay-nav', (where) => this.#navigate(where));
     this.settings.on('change', (keys) => {
@@ -66,7 +67,7 @@ export class HistoryController {
     try {
       const info = await this.supabase.myGame(this.player.code, matchId);
       if (!Array.isArray(info?.history)) {
-        this.toast.show('This game was played before moves were saved, so it can\'t be replayed.', 'info');
+        this.#explainNoReplay();
         return;
       }
       // Rebuild the whole game once; earlier positions come from positionAt().
@@ -78,6 +79,11 @@ export class HistoryController {
     } catch {
       this.toast.show("Couldn't open that game. Please try again.", 'error');
     }
+  }
+
+  /** Older games are listed (results, rating) but their moves were never saved. */
+  #explainNoReplay() {
+    this.toast.show("This game was played before replays were added, so its moves weren't saved.", 'info', 4500);
   }
 
   /** @param {'first'|'prev'|'next'|'last'} where */

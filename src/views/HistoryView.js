@@ -18,7 +18,7 @@ const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '±0');
  * "My games": the list of the player's recent online games and the replay
  * screen (read-only board + |< < > >| buttons).
  *
- * Events: 'back', 'refresh', 'open' (matchId), 'replay-back', 'replay-nav' ('first'|'prev'|'next'|'last')
+ * Events: 'back', 'refresh', 'open' (matchId), 'no-replay', 'replay-back', 'replay-nav' ('first'|'prev'|'next'|'last')
  */
 export class HistoryView extends EventEmitter {
   constructor() {
@@ -38,7 +38,9 @@ export class HistoryView extends EventEmitter {
     });
     this.list.addEventListener('click', (e) => {
       const row = e.target.closest('[data-match]');
-      if (row && row.dataset.replay === 'true') this.emit('open', row.dataset.match);
+      if (!row) return;
+      if (row.dataset.replay === 'true') this.emit('open', row.dataset.match);
+      else this.emit('no-replay');
     });
   }
 
@@ -64,16 +66,15 @@ export class HistoryView extends EventEmitter {
     li.dataset.match = g.match_id;
     li.dataset.replay = String(!!g.can_replay);
     li.dataset.result = g.won ? 'won' : 'lost';
-    if (g.can_replay) {
-      li.tabIndex = 0;
-      li.setAttribute('role', 'button');
-      li.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          this.emit('open', g.match_id);
-        }
-      });
-    }
+    // Every row is focusable: replayable games open, older ones explain why they cannot.
+    li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.emit(g.can_replay ? 'open' : 'no-replay', g.match_id);
+      }
+    });
 
     const badge = el('span', 'history__badge', g.won ? 'W' : 'L');
     const main = el('span', 'history__main');
@@ -96,7 +97,8 @@ export class HistoryView extends EventEmitter {
       li.appendChild(el('span', 'history__chev', '›'));
       li.setAttribute('aria-label', `Replay game against ${g.opponent_name}`);
     } else {
-      li.title = 'Replay not available: this game was played before moves were saved.';
+      li.appendChild(el('span', 'history__noreplay', 'No replay'));
+      li.setAttribute('aria-label', `Game against ${g.opponent_name} – no replay available`);
     }
     return li;
   }
