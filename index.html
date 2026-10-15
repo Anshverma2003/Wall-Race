@@ -100,6 +100,17 @@
           <svg class="home__leaderboard-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 6.4 10 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
         </button>
 
+        <button class="card home__leaderboard home__history" id="btn-open-history" type="button">
+          <span class="home__leaderboard-icon home__history-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9L9 12H6a7 7 0 1 1 2.1 5l-1.4 1.4A9 9 0 1 0 13 3Zm-1 5v5l4.3 2.5.7-1.2-3.5-2.1V8H12Z"/></svg>
+          </span>
+          <span class="home__leaderboard-text">
+            <strong>My games</strong>
+            <span>Your last 50 online games – replay any move</span>
+          </span>
+          <svg class="home__leaderboard-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 6.4 10 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+        </button>
+
         <details class="card rules">
           <summary>How to play</summary>
           <ul>
@@ -149,6 +160,63 @@
           </div>
           <p class="leaderboard__state" id="leaderboard-state" role="status" aria-live="polite"></p>
         </div>
+      </div>
+    </section>
+
+    <!-- ============ My games (history) ============ -->
+    <section class="screen" id="screen-history" data-screen="history" hidden>
+      <div class="history">
+        <div class="leaderboard__head">
+          <button class="icon-btn" id="btn-history-back" type="button" aria-label="Back" title="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 6.4 14 5l-7 7 7 7 1.4-1.4L9.8 12z"/></svg>
+          </button>
+          <h1 class="leaderboard__title">My games</h1>
+          <button class="icon-btn" id="btn-history-refresh" type="button" aria-label="Refresh" title="Refresh">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.3L13 11h7V4l-2.3 2.3Z"/></svg>
+          </button>
+        </div>
+        <p class="leaderboard__caption">Your last 50 online games. Only you can see them. Tap a game to replay it move by move.</p>
+        <ul class="history__list" id="history-list"></ul>
+        <p class="leaderboard__state" id="history-state" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- ============ Replay one game ============ -->
+    <section class="screen" id="screen-replay" data-screen="replay" hidden>
+      <div class="replay">
+        <div class="leaderboard__head">
+          <button class="icon-btn" id="btn-replay-back" type="button" aria-label="Back to my games" title="Back to my games">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 6.4 14 5l-7 7 7 7 1.4-1.4L9.8 12z"/></svg>
+          </button>
+          <h1 class="replay__title" id="replay-title">Replay</h1>
+          <span class="replay__spacer" aria-hidden="true"></span>
+        </div>
+        <p class="replay__result" id="replay-result"></p>
+
+        <div class="replay__players">
+          <div class="replay__player" data-player="0"><span class="player-chip__pawn">P1</span><span class="replay__name"></span><span class="replay__walls"></span></div>
+          <div class="replay__player" data-player="1"><span class="player-chip__pawn">P2</span><span class="replay__name"></span><span class="replay__walls"></span></div>
+        </div>
+
+        <div class="board-wrap">
+          <svg class="board" id="replay-board" role="img" aria-label="Replay board" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+
+        <div class="history-nav" id="replay-nav" role="group" aria-label="Replay controls">
+          <button class="history-nav__btn" type="button" data-nav="first" aria-label="Start position" title="Start position">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM18.4 6.4 17 5l-7 7 7 7 1.4-1.4L12.8 12z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="prev" aria-label="Previous move" title="Previous move">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 6.4 14 5l-7 7 7 7 1.4-1.4L9.8 12z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="next" aria-label="Next move" title="Next move">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 6.4 10 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+          </button>
+          <button class="history-nav__btn" type="button" data-nav="last" aria-label="Final position" title="Final position">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM5.6 6.4 7 5l7 7-7 7-1.4-1.4 5.6-5.6z"/></svg>
+          </button>
+        </div>
+        <p class="replay__counter" id="replay-counter" aria-live="polite"></p>
       </div>
     </section>
 

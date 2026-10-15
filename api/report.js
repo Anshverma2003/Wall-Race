@@ -69,6 +69,10 @@ export async function POST(request) {
         p_grid: report.grid,
         p_reason: report.reason,
         p_loser_moves: report.loserMoves,
+        // stored with the match so players can replay it later ("My games")
+        p_history: report.history,
+        p_wall_limit: report.wallLimit,
+        p_starting: report.startingPlayer,
       });
       return json(200, result);
     }

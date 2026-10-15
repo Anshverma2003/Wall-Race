@@ -62,8 +62,16 @@ create table if not exists public.online_matches (
   p0_rating_after  integer not null,
   p1_rating_after  integer not null,
   end_reason       text not null default 'goal',   -- goal | timeout | forfeit
+  moves_list       jsonb,      -- verified move history (null for games before migration 004)
+  wall_limit       smallint,   -- null = unlimited (only meaningful with moves_list)
+  starting_player  smallint,
   created_at       timestamptz not null default now()
 );
+alter table public.online_matches add column if not exists moves_list      jsonb;
+alter table public.online_matches add column if not exists wall_limit      smallint;
+alter table public.online_matches add column if not exists starting_player smallint;
+create index if not exists online_matches_p0_time_idx on public.online_matches (p0, created_at desc);
+create index if not exists online_matches_p1_time_idx on public.online_matches (p1, created_at desc);
 
 -- Each player's browser reports the finished game; it counts once both agree.
 create table if not exists public.match_reports (
@@ -375,9 +383,16 @@ begin
   return json_build_object('status', case when v_start.p0_confirmed and v_start.p1_confirmed then 'confirmed' else 'waiting' end);
 end $$;
 
+-- Older signatures (before 003 / 004) are replaced.
+drop function if exists public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint);
+-- New signatures (extra replay data) replace the 003 versions.
+drop function if exists public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer);
+drop function if exists public._finalize_online_match(uuid, uuid, uuid, smallint, integer, smallint, text);
+
 -- Elo update (K = 32) + stats + match record, exactly once. Internal helper.
 create or replace function public._finalize_online_match(
-  p_match_id uuid, p_p0 uuid, p_p1 uuid, p_winner smallint, p_moves integer, p_grid smallint, p_reason text
+  p_match_id uuid, p_p0 uuid, p_p1 uuid, p_winner smallint, p_moves integer, p_grid smallint, p_reason text,
+  p_history jsonb default null, p_wall_limit smallint default null, p_starting smallint default null
 )
 returns json language plpgsql volatile security definer
 set search_path = public as $$
@@ -417,24 +432,24 @@ begin
 
   insert into public.online_matches
     (id, p0, p1, winner, moves, grid_size, end_reason,
-     p0_rating_before, p1_rating_before, p0_rating_after, p1_rating_after)
+     p0_rating_before, p1_rating_before, p0_rating_after, p1_rating_after,
+     moves_list, wall_limit, starting_player)
   values
-    (p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason, r0, r1, r0 + d, r1 - d);
+    (p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason, r0, r1, r0 + d, r1 - d,
+     p_history, p_wall_limit, p_starting);
 
   return json_build_object('status', 'recorded',
                            'ratings', json_build_array(r0 + d, r1 - d),
                            'deltas', json_build_array(d, -d));
 end $$;
 
--- Replaces the previous version (it had no result reason).
-drop function if exists public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint);
-
--- Called by /api/report after it replayed and verified the game. A forfeit claimed
--- by the winner only counts if the accused player stopped sending heartbeats.
+-- Called by /api/report after it replayed and verified the game (same rules
+-- as 003, plus the verified move list for the history).
 create or replace function public.submit_online_report(
   p_match_id uuid, p_reporter uuid, p_payload_hash text,
   p_p0 uuid, p_p1 uuid, p_winner smallint, p_moves integer, p_grid smallint,
-  p_reason text default 'goal', p_loser_moves integer default null
+  p_reason text default 'goal', p_loser_moves integer default null,
+  p_history jsonb default null, p_wall_limit smallint default null, p_starting smallint default null
 )
 returns json language plpgsql volatile security definer
 set search_path = public as $$
@@ -473,7 +488,6 @@ begin
       return json_build_object('status', 'cancelled');
     end if;
     -- Claimed by the winner: the accused must really be gone (no heartbeat for 45 s).
-    -- A player reporting their own loss is always believed.
     v_loser := case when p_winner = 0 then p_p1 else p_p0 end;
     if p_reporter <> v_loser then
       v_seen := case when v_loser = v_start.p0 then v_start.p0_seen_at else v_start.p1_seen_at end;
@@ -481,7 +495,8 @@ begin
         return json_build_object('status', 'opponent_active');
       end if;
     end if;
-    return public._finalize_online_match(p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason);
+    return public._finalize_online_match(p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason,
+                                         p_history, p_wall_limit, p_starting);
   end if;
 
   -- Won on the board or on time: both players must report the identical game.
@@ -496,19 +511,92 @@ begin
   if v_theirs is null then return json_build_object('status', 'waiting'); end if;
   if v_theirs <> v_mine then return json_build_object('status', 'mismatch'); end if;
 
-  return public._finalize_online_match(p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason);
+  return public._finalize_online_match(p_match_id, p_p0, p_p1, p_winner, p_moves, p_grid, p_reason,
+                                       p_history, p_wall_limit, p_starting);
 end $$;
+
+-- Browser → database (publishable key): my 50 most recent online games.
+create or replace function public.my_games(p_code text, p_limit integer default 50)
+returns table (
+  match_id uuid, played_at timestamptz, my_index smallint, won boolean, end_reason text,
+  opponent_name text, opponent_tag text, rating_before integer, rating_after integer,
+  moves integer, grid_size smallint, can_replay boolean
+)
+language plpgsql stable security definer
+set search_path = public, extensions as $$
+#variable_conflict use_column
+declare
+  v_player uuid;
+begin
+  select p.id into v_player from public.players p where p.secret_hash = public._secret_hash(p_code);
+  if v_player is null then raise exception 'BAD_CODE'; end if;
+
+  return query
+  select m.id,
+         m.created_at,
+         (case when m.p0 = v_player then 0 else 1 end)::smallint,
+         m.winner = (case when m.p0 = v_player then 0 else 1 end),
+         m.end_reason,
+         o.name,
+         o.tag,
+         case when m.p0 = v_player then m.p0_rating_before else m.p1_rating_before end,
+         case when m.p0 = v_player then m.p0_rating_after else m.p1_rating_after end,
+         m.moves,
+         m.grid_size,
+         m.moves_list is not null
+  from public.online_matches m
+  join public.players o on o.id = case when m.p0 = v_player then m.p1 else m.p0 end
+  where v_player in (m.p0, m.p1)
+  order by m.created_at desc
+  limit least(greatest(coalesce(p_limit, 50), 1), 50);
+end $$;
+
+-- Browser → database: one of my games, with everything needed to replay it.
+create or replace function public.my_game(p_code text, p_match_id uuid)
+returns json language plpgsql stable security definer
+set search_path = public, extensions as $$
+declare
+  v_player uuid;
+  v_m      public.online_matches;
+  v_a      public.players;
+  v_b      public.players;
+begin
+  select id into v_player from public.players where secret_hash = public._secret_hash(p_code);
+  if v_player is null then raise exception 'BAD_CODE'; end if;
+
+  select * into v_m from public.online_matches where id = p_match_id and v_player in (p0, p1);
+  if not found then raise exception 'NOT_FOUND'; end if;
+  select * into v_a from public.players where id = v_m.p0;
+  select * into v_b from public.players where id = v_m.p1;
+
+  return json_build_object(
+    'match_id', v_m.id,
+    'played_at', v_m.created_at,
+    'my_index', case when v_m.p0 = v_player then 0 else 1 end,
+    'winner', v_m.winner,
+    'end_reason', v_m.end_reason,
+    'grid_size', v_m.grid_size,
+    'wall_limit', v_m.wall_limit,
+    'starting_player', v_m.starting_player,
+    'history', v_m.moves_list,
+    'players', json_build_array(
+      json_build_object('name', v_a.name, 'tag', v_a.tag, 'rating_before', v_m.p0_rating_before, 'rating_after', v_m.p0_rating_after),
+      json_build_object('name', v_b.name, 'tag', v_b.tag, 'rating_before', v_m.p1_rating_before, 'rating_after', v_m.p1_rating_after)
+    )
+  );
+end $$;
+
 
 -- Only the server (service_role) may record results.
 revoke execute on function
   public.register_online_start(uuid, uuid, uuid, uuid),
-  public._finalize_online_match(uuid, uuid, uuid, smallint, integer, smallint, text),
-  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer)
+  public._finalize_online_match(uuid, uuid, uuid, smallint, integer, smallint, text, jsonb, smallint, smallint),
+  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer, jsonb, smallint, smallint)
 from public, anon, authenticated;
 
 grant execute on function
   public.register_online_start(uuid, uuid, uuid, uuid),
-  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer)
+  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer, jsonb, smallint, smallint)
 to service_role;
 
 
@@ -543,12 +631,14 @@ grant execute on function
   public.player_cards(uuid[]),
   public.leaderboard_online(integer, uuid),
   public.leaderboard_ai(text, integer, uuid),
-  public.match_heartbeat(text, uuid)
+  public.match_heartbeat(text, uuid),
+  public.my_games(text, integer),
+  public.my_game(text, uuid)
 to anon, authenticated;
 
 grant execute on function
   public.register_online_start(uuid, uuid, uuid, uuid),
-  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer),
+  public.submit_online_report(uuid, uuid, text, uuid, uuid, smallint, integer, smallint, text, integer, jsonb, smallint, smallint),
   public.record_ai_win(uuid, uuid, integer, integer, smallint)
 to service_role;
 
